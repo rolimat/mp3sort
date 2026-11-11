@@ -12,24 +12,24 @@ Las descargas llegan con nombres sucios (`Lumen - Prisma - www.example.com.mp3`,
 
 - Se parte de los tags `artist`/`title`; si faltan, o el título contiene `Artista - `, se saca del nombre de fichero (quita número de pista, `_` y `__`, grupo de release final tipo `-abc`).
 - Se limpian webs (`www...`, `http...`, `algo.com/.net/.org/.ru/.info/.io`), `()` vacíos, `[corchetes]`, paréntesis duplicados y un BPM final (2-3 dígitos entre 70 y 180, p. ej. `Open Sky 122`).
-- Se conservan tal cual la capitalización, los separadores de artistas (`,` `&` `x`) y `feat.`/`ft`.
+- Cuando el nombre sale de los tags se conservan tal cual la capitalización, los separadores de artistas (`,` `&` `x`) y `feat.`/`ft`. Si sale de un nombre de fichero estilo scene (sin espacios) se pasa a mayúscula inicial por palabra, `_` pasa a espacio y `__` a `, `.
 - En el nombre de fichero `/` y `:` pasan a `-`; el tag conserva el texto original.
 - Mix/remix: la designación va entre paréntesis. Se reutiliza el grupo `(..)` del nombre de fichero, o se envuelven las frases `Original Mix`, `Extended Mix`, `Extended`, `Extended Version`, `Radio Edit`, `Club Mix`, `Dub Mix`. Un `<x> Remix` sin evidencia de paréntesis se deja y se marca ⚠ "remix sin paréntesis, revisar".
 
 ### Casos marcados ⚠ (no se aplican por defecto)
 
-Tag y nombre de fichero no coinciden; ¿artista y título intercambiados?; falta o se añade un `(grupo)` respecto al nombre de fichero; sin tags (sacado del nombre) o sin artista/título; caracteres raros (`< > | * "`) o un símbolo suelto entre espacios (`?` es válido); no se pueden leer los tags; duplicado dentro de la tanda; ya existe en destino.
+Tag y nombre de fichero no coinciden; ¿artista y título intercambiados?; falta o se añade un `(grupo)` respecto al nombre de fichero; sin tags (sacado del nombre) o sin artista/título; caracteres raros (`< > | * "`) o cualquier símbolo suelto entre espacios (p. ej. ` ? ` o ` ! `; solo se exceptúan `&` `+` `/` `-` y la `x`). Un `?` pegado a una palabra (`Where To Go?`) es válido; no se pueden leer los tags; duplicado dentro de la tanda; ya existe en destino.
 
 ### Tags
 
 - `album`, `comment` y `genre` se vacían; `artist` y `title` se escriben limpios.
 - Se borra entero el tag APEv2.
-- **Traktor**: el frame privado `PRIV:TRAKTOR4` se conserva a propósito. Puede guardar su propia copia de un comentario antiguo que Traktor sigue mostrando aunque el tag `comment` esté vacío.
+- **Traktor**: el frame privado `PRIV:TRAKTOR4` se conserva a propósito. Traktor puede guardar en ese bloque su propia copia del comentario y mostrarla aunque la etiqueta ya no lo tenga.
 - El resto de frames ID3 queda intacto. Se escribe ID3 v2.3/v2.4 (el v2.2 se reescribe como v2.4) más ID3v1.
 
 ### Mover con seguridad
 
-Copiar → escribir tags en la copia → verificar (tags leídos y duración sin cambios, sin APEv2) → borrar el original. Si algo falla se borra la copia y el original queda intacto. Nunca se sobrescribe: duplicados y conflictos en destino se saltan. El destino es plano, y se rechaza un destino dentro del origen (o al revés). Solo se procesan `.mp3` (recursivo); el resto queda en origen.
+Copiar → escribir tags en la copia → verificar (tags leídos y duración sin cambios, sin APEv2) → borrar el original. Si algo falla se borra la copia y el original queda intacto. Nunca se sobrescribe: duplicados y conflictos en destino se saltan. El destino es plano, y se rechaza un destino dentro del origen (o al revés). Solo se procesan `.mp3` (recursivo); el resto queda en origen, igual que los ficheros ocultos que empiezan por `.`. Si el original no se puede borrar tras verificar la copia, quedan ambos y se cuenta aparte (`Copiados sin borrar original`).
 
 ## Instalación
 
@@ -54,11 +54,13 @@ Vista previa, una línea por fichero:
   ✓ 2  ...
 ```
 
-Columna ⚠, columna ✓ (seleccionado), original → propuesto, bitrate (kbps, `VBR` si aplica) y motivos entre `[...]`. Los ⚠ empiezan sin seleccionar. El prompt `> ` va en su propia línea:
+Columna ⚠, columna ✓ (seleccionado), original → propuesto (nombres de más de 50 caracteres se cortan con `…`), bitrate (kbps, `VBR` si aplica; `? kbps` si se desconoce) y motivos entre `[...]`. Al final, un resumen `N ok · M ⚠`. Los ⚠ empiezan sin seleccionar. El prompt `> ` va en su propia línea:
 
 - números (`3,5` o `3 5`): alterna incluir/excluir esas líneas;
 - Enter: aplica los seleccionados;
-- `q`: salir sin hacer nada.
+- `q` (o fin de entrada/EOF): salir sin hacer nada.
+
+Un fichero sin nombre propuesto no se puede incluir.
 
 ## Tests y feedback
 
