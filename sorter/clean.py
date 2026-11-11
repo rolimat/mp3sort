@@ -117,7 +117,7 @@ def _propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Pr
 
 _MIX_PHRASE = re.compile(r"^(.+\S)\s+(Original Mix|Extended Mix|Extended Version|Extended|Radio Edit|Club Mix|Dub Mix)$", re.I)
 _REMIX_TAIL = re.compile(r"\S+\s+\S*Remix$", re.I)
-_WEIRD = re.compile(r'[<>|*?"]|(?<!\S)(?=[\W_])[^\s&+/\-](?=[\s,]|$)')
+_WEIRD = re.compile(r'[<>|*"]|(?<!\S)(?=[\W_])[^\s&+/\-](?=[\s,]|$)')
 
 
 def _paren_mix(title: str, fp: tuple[str, str] | None, flags: list[str]) -> str:

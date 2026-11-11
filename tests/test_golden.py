@@ -80,3 +80,7 @@ def test_weird_chars_flagged(a, t):
                                  ("Lo-Fa", "A & B + C / x"), ("KA,RO", "Duna (xyz)")])
 def test_legit_names_not_flagged(a, t):
     assert not propose(f"{a} - {t}.mp3", a, t).flags
+
+
+def test_question_mark_valid_in_title():
+    assert not propose("Lumen - Where To Go?.mp3", "Lumen", "Where To Go?").flags
