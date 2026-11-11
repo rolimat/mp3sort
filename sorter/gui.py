@@ -3,6 +3,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from sorter.apply import COPIED_NOT_DELETED
 from sorter.gui_model import Model, load_settings, save_settings
 
 
@@ -23,6 +24,7 @@ class App:
         self.status_var, self.footer_var = tk.StringVar(), tk.StringVar()
         root.title("mp3sort")
         root.protocol("WM_DELETE_WINDOW", self.on_close)
+        root.createcommand("::tk::mac::Quit", self.on_close)  # Cmd+Q bypasses WM_DELETE_WINDOW
         self._build()
         self._sync()
 
@@ -118,7 +120,12 @@ class App:
         self.footer_var.set(self.model.footer())
         self._sync()
 
+    def _inert(self):
+        return self.model.busy or self.worker is not None
+
     def toggle_row(self, i):
+        if self._inert():
+            return
         msg = self.model.toggle(i)
         self.status_var.set(msg or "")
         self.tree.set(str(i), "c", "☑" if self.model.items[i].selected else "☐")
@@ -126,11 +133,15 @@ class App:
         self._sync()
 
     def _click(self, e):
+        if self._inert():
+            return
         row = self.tree.identify_row(e.y)
         if row and self.tree.identify_region(e.x, e.y) == "cell" and self.tree.identify_column(e.x) == "#2":
             self.toggle_row(int(row))
 
     def _toggle_selected(self):
+        if self._inert():
+            return "break"
         s = self.tree.selection()
         if s:
             self.toggle_row(int(s[0]))
@@ -139,15 +150,18 @@ class App:
     def detail_text(self):
         return self.detail.get("1.0", "end").strip()
 
-    def _show_detail(self):
-        s = self.tree.selection()
-        if not s:
-            return
-        txt = "\n".join(f"{k}: {v}" for k, v in self.model.detail(int(s[0])))
+    def _set_detail(self, txt):
         self.detail.config(state="normal")
         self.detail.delete("1.0", "end")
         self.detail.insert("1.0", txt)
         self.detail.config(state="disabled")
+
+    def _show_detail(self):
+        s = self.tree.selection()
+        if self._inert() or not s:
+            return
+        txt = "\n".join(f"{k}: {v}" for k, v in self.model.detail(int(s[0])))
+        self._set_detail(txt)
 
     # --- background work: thread computes, main thread polls via root.after ---
     def _run(self, work, done):
@@ -181,6 +195,8 @@ class App:
             return
         self.model.busy = True
         self.status_var.set("Scanning…")
+        self.tree.delete(*self.tree.get_children())
+        self._set_detail("")
         self._show_table(True)
 
         def done(r):
@@ -210,7 +226,7 @@ class App:
                 return
             self.results.delete(*self.results.get_children())
             for it, err in r:
-                self.results.insert("", "end", values=("✓" if err is None else "!" if err.startswith("copied") else "✗",
+                self.results.insert("", "end", values=("✓" if err is None else "!" if err.startswith(COPIED_NOT_DELETED) else "✗",
                                                        it.src.name, err or ""))
             self.footer_var.set(self.model.summary(r))
             self._show_table(False)

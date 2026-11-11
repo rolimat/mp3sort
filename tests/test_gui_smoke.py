@@ -80,12 +80,15 @@ def test_scan_select_move(root, tmp_path):
     shutil.copy(AUDIO, s / "Lumen - Prisma - www.example.com.mp3")
     shutil.copy(AUDIO, s / "junk.mp3")
     answers = [False, True]
-    app = App(root, Model(s, d), ask_directory=None, confirm=lambda *a, **k: answers.pop(0))
+    errs = []
+    app = App(root, Model(s, d), ask_directory=None, confirm=lambda *a, **k: answers.pop(0), show_error=errs.append)
     app.scan(); wait(root, app)
     rows = app.tree.get_children()
     assert len(rows) == len(app.model.items) == 2
     v = app.tree.item(rows[0], "values")
     assert v[1] in ("☑", "☐") and v[2] == "1"
+    assert v[0] == "⚠" and v[3] == app.model.items[0].proposal.filename and v[4] != ""
+    assert str(app.move_btn["state"]) == "disabled" and app.move_btn["text"] == "Move 0 selected"
     app.tree.selection_set(rows[0]); root.update()
     assert "Original file" in app.detail_text()
     assert app.model.footer() in app.footer_var.get()
@@ -96,10 +99,10 @@ def test_scan_select_move(root, tmp_path):
     assert not list(d.iterdir()) and len(list(s.iterdir())) == 2
     app.move(); wait(root, app)          # confirm True
     assert len(list(d.iterdir())) == k
-    assert k == 1 and not app.tree.winfo_ismapped()
+    assert k == 1 and app.body.winfo_manager() == '' and app.results.winfo_manager() == 'grid'
     assert app.results.get_children() and "Moved:" in app.footer_var.get()
     app.scan(); wait(root, app)          # Scan again returns to table
-    assert app.tree.get_children() is not None
+    assert app.body.winfo_manager() == 'grid' and len(app.tree.get_children()) == 1
 
 
 def test_toggle_refusal(root, tmp_path):
@@ -111,12 +114,40 @@ def test_toggle_refusal(root, tmp_path):
     app = App(root, m, ask_directory=None, confirm=None)
     app.refresh_table()
     app.toggle_row(0)
-    assert "cannot include" in app.status_var.get() and not m.items[0].selected
+    assert app.status_var.get() == "cannot include (no proposed name)" and not m.items[0].selected
 
 
-def test_close_blocked_while_busy(root, tmp_path):
+def test_inert_while_busy(root, tmp_path):
+    from sorter.clean import Proposal
+    from sorter.scan import Item
+    s, d = folders(tmp_path)
+    m = Model(s, d)
+    m.items = [Item(s / "a.mp3", Proposal("A", "B", []), True)]
+    app = App(root, m, ask_directory=None, confirm=None)
+    app.refresh_table()
+    m.busy = True
+    try:
+        m.items = []  # stale row 0 would raise IndexError if handled
+        app.toggle_row(0)
+        app.tree.selection_set("0")
+        app._show_detail()
+        assert app._toggle_selected() == "break"
+        assert app.detail_text() == ""
+    finally:
+        m.busy = False
+
+
+def test_close_and_quit(root, tmp_path):
     app = App(root, Model(), ask_directory=None, confirm=None)
+    assert root.tk.call("info", "commands", "::tk::mac::Quit")
     app.model.busy = True
+    try:
+        app.on_close()
+        assert root.winfo_exists()
+    finally:
+        app.model.busy = False
+    called = []
+    root.destroy = (lambda: called.append(1)
     app.on_close()
-    assert root.winfo_exists()
-    app.model.busy = False
+    del root.destroy  # restore the class method for the fixture teardown
+    assert called
