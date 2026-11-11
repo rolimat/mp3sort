@@ -112,3 +112,33 @@ def test_main_empty_source(tmp_path, capsys):
     src, dest = folders(tmp_path)
     assert main([str(dest), "--source", str(src)], input_fn=feed()) == 0
     assert "No hay mp3 en el origen" in capsys.readouterr().out
+
+
+def test_main_dest_equals_source(tmp_path, capsys):
+    src, _ = folders(tmp_path)
+    assert main([str(src), "--source", str(src)], input_fn=feed()) == 2
+    assert "el destino no puede estar dentro del origen" in capsys.readouterr().out
+
+
+def test_main_dest_inside_source_and_reverse(tmp_path):
+    src, _ = folders(tmp_path)
+    sub = src / "sub"
+    sub.mkdir()
+    assert main([str(sub), "--source", str(src)], input_fn=feed()) == 2
+    assert main([str(src), "--source", str(sub)], input_fn=feed()) == 2
+
+
+def test_parse_selection_superscript():
+    with pytest.raises(ValueError, match="no es un número"):
+        parse_selection("²", 5)
+
+
+def test_main_summary_copied_without_delete(tmp_path, monkeypatch, capsys):
+    import sorter.cli
+    src, dest = folders(tmp_path)
+    (src / "Lumen - Prisma.mp3").write_bytes(b"x")
+    monkeypatch.setattr(sorter.cli, "apply_item",
+                        lambda it, d: "copiado y verificado, pero no se pudo borrar el original (quedan ambos): x")
+    assert main([str(dest), "--source", str(src)], input_fn=feed("1", "")) == 0
+    out = capsys.readouterr().out
+    assert "Movidos: 0 · Quedan en origen: 0 · Copiados sin borrar original: 1" in out

@@ -29,7 +29,7 @@ def render(items: list[Item]) -> str:
 def parse_selection(text: str, n: int) -> list[int]:
     out = []
     for tok in text.replace(",", " ").split():
-        if not tok.isdigit():
+        if not tok.isdecimal():
             raise ValueError(f"'{tok}' no es un número")
         k = int(tok)
         if not 1 <= k <= n:
@@ -49,6 +49,10 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
         if not d.is_dir():
             print(f"Error: la carpeta de {label} no existe: {d}")
             return 2
+    s, d = source.resolve(), dest.resolve()
+    if s == d or s in d.parents or d in s.parents:
+        print("Error: el destino no puede estar dentro del origen (ni al revés)")
+        return 2
     items = scan(source, dest)
     if not items:
         print("No hay mp3 en el origen")
@@ -74,7 +78,7 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
                 else:
                     it.selected = not it.selected
             continue
-        moved = left = 0
+        moved = left = kept = 0
         for it in items:
             if not it.selected:
                 left += 1
@@ -83,8 +87,12 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
             if err is None:
                 moved += 1
                 print(f"✓ {it.src.name}")
+            elif err.startswith("copiado y verificado"):
+                kept += 1
+                print(f"! {it.src.name}: {err}")
             else:
                 left += 1
                 print(f"✗ {it.src.name}: {err}")
-        print(f"Movidos: {moved} · Quedan en origen: {left}")
+        extra = f" · Copiados sin borrar original: {kept}" if kept else ""
+        print(f"Movidos: {moved} · Quedan en origen: {left}{extra}")
         return 0
