@@ -1,0 +1,125 @@
+import hashlib
+import shutil
+from pathlib import Path
+
+import pytest
+from mutagen.id3 import COMM, ID3, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TPUB
+
+from sorter.apply import apply_item
+from sorter.clean import Proposal
+from sorter.scan import Item
+
+AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
+needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="falta tests/fixtures/audio/a1.mp3")
+KEEP = ("TKEY", "TBPM", "TDRC", "TPUB")
+
+
+def setup(tmp_path):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    src.mkdir()
+    dest.mkdir()
+    f = src / "Lumen - Prisma - www.example.com.mp3"
+    shutil.copy(AUDIO, f)
+    t = ID3(f)
+    t.delall("TPE1")  # empezar con tag set inventado completo
+    t.add(TPE1(encoding=3, text="Lumen x Otro"))
+    t.add(TIT2(encoding=3, text="Prisma (www.example.com)"))
+    t.add(TALB(encoding=3, text="www.example.com"))
+    t.add(TCON(encoding=3, text="Pop"))
+    t.add(COMM(encoding=3, lang="eng", desc="", text="www.example.com"))
+    t.add(TKEY(encoding=3, text="Am"))
+    t.add(TBPM(encoding=3, text="128"))
+    t.add(TDRC(encoding=3, text="2020"))
+    t.add(TPUB(encoding=3, text="Sello"))
+    t.save(f, v2_version=3)
+    return Item(f, Proposal("Lumen", "Prisma", []), True), dest
+
+
+def sha(p):
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+@needs_audio
+def test_apply_moves_and_cleans(tmp_path):
+    item, dest = setup(tmp_path)
+    before = ID3(item.src)
+    kept = {k: before[k].pprint() for k in before if k.split(":")[0] in KEEP + ("APIC",)}
+    assert set(k[:4] for k in kept) >= set(KEEP)
+    assert apply_item(item, dest) is None
+    out = dest / "Lumen - Prisma.mp3"
+    assert out.exists() and not item.src.exists()
+    t = ID3(out)
+    assert t["TPE1"].text == ["Lumen"] and t["TIT2"].text == ["Prisma"]
+    assert not t.getall("TALB") and not t.getall("TCON") and not t.getall("COMM")
+    assert {k: t[k].pprint() for k in t if k.split(":")[0] in KEEP + ("APIC",)} == kept
+
+
+@needs_audio
+def test_apply_keeps_id3_version(tmp_path):
+    item, dest = setup(tmp_path)
+    v = ID3(item.src).version
+    assert v == (2, 3, 0)
+    assert apply_item(item, dest) is None
+    assert ID3(dest / "Lumen - Prisma.mp3").version == v
+
+
+@needs_audio
+def test_apply_never_overwrites(tmp_path):
+    item, dest = setup(tmp_path)
+    (dest / "Lumen - Prisma.mp3").write_bytes(b"keep")
+    assert apply_item(item, dest)
+    assert (dest / "Lumen - Prisma.mp3").read_bytes() == b"keep"
+    assert item.src.exists()
+
+
+@needs_audio
+def test_apply_never_overwrites_case_insensitive(tmp_path):
+    item, dest = setup(tmp_path)
+    (dest / "lumen - prisma.MP3").write_bytes(b"keep")
+    assert apply_item(item, dest)
+    assert item.src.exists() and len(list(dest.iterdir())) == 1
+
+
+@needs_audio
+def test_apply_readonly_dest(tmp_path):
+    item, dest = setup(tmp_path)
+    h = sha(item.src)
+    dest.chmod(0o500)
+    try:
+        assert apply_item(item, dest)
+        assert sha(item.src) == h
+        assert list(dest.iterdir()) == []
+    finally:
+        dest.chmod(0o700)
+
+
+@needs_audio
+def test_apply_tag_failure_cleans_copy(tmp_path, monkeypatch):
+    item, dest = setup(tmp_path)
+    h = sha(item.src)
+
+    def boom(*a, **k):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(ID3, "save", boom)
+    assert apply_item(item, dest)
+    assert list(dest.iterdir()) == [] and sha(item.src) == h
+
+
+@needs_audio
+def test_apply_delete_original_fails_keeps_copy(tmp_path, monkeypatch):
+    item, dest = setup(tmp_path)
+
+    def boom(self, *a, **k):
+        raise PermissionError("no")
+
+    monkeypatch.setattr(Path, "unlink", boom)
+    msg = apply_item(item, dest)
+    assert msg and "original" in msg
+    assert (dest / "Lumen - Prisma.mp3").exists() and item.src.exists()
+
+
+def test_apply_no_filename(tmp_path):
+    item = Item(tmp_path / "x.mp3", Proposal("", "", []), False)
+    assert apply_item(item, tmp_path)
