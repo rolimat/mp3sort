@@ -36,7 +36,7 @@ def parse_selection(text: str, n: int) -> list[int]:
             raise ValueError(f"'{tok}' is not a number")
         k = int(tok)
         if not 1 <= k <= n:
-            raise ValueError(f"{k} is out of range (1-{n})")
+            raise ValueError(f"'{k}' is out of range (1-{n})")
         out.append(k - 1)
     return out
 

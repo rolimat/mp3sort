@@ -97,7 +97,7 @@ def test_main_bad_input_reprompts(tmp_path, capsys):
     src, dest = folders(tmp_path)
     put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
     assert main([str(dest), "--source", str(src)], input_fn=feed("9", "q")) == 0
-    assert "is out of range" in capsys.readouterr().out
+    assert "' is out of range (1-" in capsys.readouterr().out
 
 
 def test_main_cannot_include_unnamed(tmp_path, capsys):

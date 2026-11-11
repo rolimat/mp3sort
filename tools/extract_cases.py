@@ -1,4 +1,4 @@
-"""Extrae (dir, filename, artist, title) de los .mp3 de las carpetas dadas. Solo lectura."""
+"""Extract (dir, filename, artist, title) from the .mp3 files in the given folders. Read-only."""
 import json
 import sys
 from pathlib import Path

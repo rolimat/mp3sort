@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Recrea sandbox/ dentro del repo y copia (solo lectura) las carpetas dadas a sandbox/complete/.
-# Uso: tools/make_sandbox.sh <carpeta> [<carpeta>...]
+# Recreates sandbox/ inside the repo and copies (read-only) the given folders into sandbox/complete/.
+# Usage: tools/make_sandbox.sh <folder> [<folder>...]
 set -euo pipefail
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: $0 <carpeta> [<carpeta>...]" >&2
+  echo "Usage: $0 <folder> [<folder>...]" >&2
   exit 1
 fi
 ROOT="${MP3SORT_SANDBOX_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -15,7 +15,7 @@ if [ "$ROOT" -ef / ] || [ "$ROOT" -ef "$HOME" ]; then
 fi
 SANDBOX="$ROOT/sandbox"
 
-# Resolver todos los argumentos a rutas absolutas antes de cualquier cd/rm.
+# Resolve all arguments to absolute paths before any cd/rm.
 SRCS=()
 for f in "$@"; do
   if [ ! -d "$f" ]; then
