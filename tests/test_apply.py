@@ -123,3 +123,52 @@ def test_apply_delete_original_fails_keeps_copy(tmp_path, monkeypatch):
 def test_apply_no_filename(tmp_path):
     item = Item(tmp_path / "x.mp3", Proposal("", "", []), False)
     assert apply_item(item, tmp_path)
+
+
+@needs_audio
+def test_apply_id3v22_source(tmp_path, monkeypatch):
+    item, dest = setup(tmp_path)
+
+    class V22(ID3):  # simula v2.2: mutagen no escribe v2.2
+        version = property(lambda self: (2, 2, 0), lambda self, v: None)
+
+        def save(self, f, v1=1, v2_version=4, **k):
+            assert v2_version in (3, 4)  # mutagen solo escribe v2.3/v2.4
+            super().save(f, v1=v1, v2_version=v2_version, **k)
+
+    monkeypatch.setattr("sorter.apply.ID3", V22)
+    assert apply_item(item, dest) is None
+    assert ID3(dest / "Lumen - Prisma.mp3").version[1] in (3, 4)
+    assert not item.src.exists()
+
+
+@needs_audio
+def test_apply_interrupt_cleans_copy(tmp_path, monkeypatch):
+    item, dest = setup(tmp_path)
+    h = sha(item.src)
+
+    def boom(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(ID3, "save", boom)
+    with pytest.raises(KeyboardInterrupt):
+        apply_item(item, dest)
+    assert list(dest.iterdir()) == [] and sha(item.src) == h
+
+
+@needs_audio
+def test_apply_verification_mismatch(tmp_path, monkeypatch):
+    item, dest = setup(tmp_path)
+    h = sha(item.src)
+    monkeypatch.setattr(ID3, "save", lambda *a, **k: None)  # tags no se escriben
+    assert apply_item(item, dest)
+    assert list(dest.iterdir()) == [] and sha(item.src) == h
+
+
+@needs_audio
+def test_apply_no_id3_header(tmp_path):
+    item, dest = setup(tmp_path)
+    ID3(item.src).delete(item.src)
+    assert apply_item(item, dest) is None
+    t = ID3(dest / "Lumen - Prisma.mp3")
+    assert t["TPE1"].text == ["Lumen"] and t.version[1] == 4
