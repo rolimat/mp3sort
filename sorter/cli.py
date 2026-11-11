@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 
 from sorter.apply import COPIED_NOT_DELETED, apply_item
+from sorter.folders import check_folders
 from sorter.scan import Item, scan
 
 DEFAULT_SOURCE = Path.home() / "Soulseek Downloads" / "complete"
@@ -48,13 +49,9 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
     args = ap.parse_args(argv)
     source = args.source or DEFAULT_SOURCE  # lookup en llamada, no en import
     dest = args.dest
-    for label, d in (("destination", dest), ("source", source)):
-        if not d.is_dir():
-            print(f"Error: the {label} folder does not exist: {d}")
-            return 2
-    s, d = source.resolve(), dest.resolve()
-    if s == d or s in d.parents or d in s.parents:
-        print("Error: the destination cannot be inside the source (or vice versa)")
+    err = check_folders(source, dest)
+    if err:
+        print(err)
         return 2
     items = scan(source, dest)
     if not items:
