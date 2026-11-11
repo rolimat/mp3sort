@@ -98,3 +98,20 @@ def test_arg_inside_or_containing_sandbox_refused(tmp_path):
     for arg in (root / "sandbox/complete", root):
         r = run(root, str(arg))
         assert r.returncode == 1 and marker.exists()
+
+
+def test_case_variant_of_home_refused(tmp_path):
+    _, d = _mk(tmp_path)
+    fake = tmp_path / "fakehome"
+    fake.mkdir()
+    env = {**os.environ, "HOME": str(fake), "MP3SORT_SANDBOX_ROOT": str(tmp_path / "FAKEHOME")}
+    r = subprocess.run([str(SCRIPT), str(d)], env=env, capture_output=True, text=True)
+    assert r.returncode == 1
+    assert not (fake / "sandbox").exists()
+
+
+def test_slash_arg_refused_before_copy(tmp_path):
+    root, _ = _mk(tmp_path)
+    r = run(root, "/")
+    assert r.returncode == 1
+    assert not (root / "sandbox").exists()

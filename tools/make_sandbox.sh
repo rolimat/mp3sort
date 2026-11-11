@@ -9,7 +9,7 @@ if [ "$#" -lt 1 ]; then
 fi
 ROOT="${MP3SORT_SANDBOX_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 ROOT="$(cd "$ROOT" && pwd -P)"
-if [ "$ROOT" = "/" ] || [ "$ROOT" = "$(cd "$HOME" && pwd -P)" ]; then
+if [ "$ROOT" -ef / ] || [ "$ROOT" -ef "$HOME" ]; then
   echo "Error: raiz insegura: $ROOT" >&2
   exit 1
 fi
@@ -23,7 +23,7 @@ for f in "$@"; do
     exit 1
   fi
   abs="$(cd "$f" && pwd -P)"
-  if [[ "$abs/" == "$SANDBOX/"* || "$SANDBOX/" == "$abs/"* ]]; then
+  if [[ "${abs%/}/" == "$SANDBOX/"* || "$SANDBOX/" == "${abs%/}/"* ]]; then
     echo "Error: la carpeta esta dentro de sandbox o lo contiene: $f" >&2
     exit 1
   fi
