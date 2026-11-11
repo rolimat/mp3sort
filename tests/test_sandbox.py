@@ -71,9 +71,16 @@ def test_sandbox_with_marker_is_rebuilt(tmp_path):
 
 def test_root_home_or_slash_refused(tmp_path):
     _, d = _mk(tmp_path)
-    for bad in (os.path.expanduser("~"), "/"):
-        r = run(bad, str(d))
-        assert r.returncode == 1
+    fake = tmp_path / "fakehome"
+    fake.mkdir()
+    env = {**os.environ, "HOME": str(fake), "MP3SORT_SANDBOX_ROOT": str(fake)}
+    r = subprocess.run([str(SCRIPT), str(d)], env=env, capture_output=True, text=True)
+    assert r.returncode == 1
+    assert not (fake / "sandbox").exists()
+    # "/" is refused before any rm/mkdir in the script.
+    env["MP3SORT_SANDBOX_ROOT"] = "/"
+    r = subprocess.run([str(SCRIPT), str(d)], env=env, capture_output=True, text=True)
+    assert r.returncode == 1
 
 
 def test_relative_arg_from_other_cwd(tmp_path):
