@@ -147,7 +147,7 @@ def test_close_and_quit(root, tmp_path):
     finally:
         app.model.busy = False
     called = []
-    root.destroy = (lambda: called.append(1)
+    root.destroy = (lambda: called.append(1))
     app.on_close()
     del root.destroy  # restore the class method for the fixture teardown
     assert called
