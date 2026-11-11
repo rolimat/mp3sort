@@ -47,3 +47,36 @@ def test_norm_special_letters():
 
 def test_two_different_non_latin_artists_flagged():
     assert propose("Другая - Bar.mp3", "Клубная", "Bar").flags
+
+
+def test_remix_parens_from_filename():
+    p = propose("Lumen - Prisma (Nova Remix).mp3", "Lumen", "Prisma Nova Remix")
+    assert (p.title, p.flags) == ("Prisma (Nova Remix)", [])
+
+
+@pytest.mark.parametrize("phrase", ["Original Mix", "Extended Mix", "Radio Edit", "Club Mix", "Dub Mix",
+                                    "Extended", "Extended Version"])
+def test_known_mix_phrase_wrapped(phrase):
+    p = propose(f"Lumen - Prisma Go {phrase}.mp3", "Lumen", f"Prisma Go {phrase}")
+    assert (p.title, p.flags) == (f"Prisma Go ({phrase})", [])
+
+
+def test_mix_phrase_already_parenthesized_untouched():
+    assert propose("Lumen - Prisma.mp3", "Lumen", "Prisma (Original Mix)").title == "Prisma (Original Mix)"
+
+
+def test_remix_without_parens_flagged():
+    p = propose("Lumen - Prisma Nova Remix.mp3", "Lumen", "Prisma Nova Remix")
+    assert p.title == "Prisma Nova Remix" and p.flags == ["remix sin paréntesis, revisar"]
+
+
+@pytest.mark.parametrize("a,t", [("Lumen", "Prisma >"), ("Lumen", "Pri|sma"), ("Lumen _, Kiro", "Prisma"),
+                                 ("Lumen", "Prisma _ Go"), ("Lu*men", "Prisma")])
+def test_weird_chars_flagged(a, t):
+    assert "caracteres raros en artista o título" in propose("Lumen - Prisma.mp3", a, t).flags
+
+
+@pytest.mark.parametrize("a,t", [("Ka;ro", "Mira_Vox"), ("lu·na", "Brønd"), ("SÖLÄR VEX", "Z.E.N.I.T"),
+                                 ("Lo-Fa", "A & B + C / x"), ("KA,RO", "Duna (xyz)")])
+def test_legit_names_not_flagged(a, t):
+    assert not propose(f"{a} - {t}.mp3", a, t).flags

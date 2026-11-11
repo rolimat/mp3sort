@@ -90,7 +90,7 @@ def _same(a: str, b: str) -> bool:
     return na == nb
 
 
-def propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Proposal:
+def _propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Proposal:
     ta, tt = clean_text(tag_artist or ""), clean_text(tag_title or "")
     fp = parse_filename(filename)
     if not ta or not tt or " - " in tt:
@@ -113,3 +113,33 @@ def propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Pro
     elif all(map(_norm, (ta, tt, fa, ft))) and _norm(tt).startswith(_norm(fa)) and _norm(ft).startswith(_norm(ta)):
         return Proposal(ta, tt, ["¿artista y título intercambiados?"])
     return Proposal(ta, tt, ["tag y nombre de fichero no coinciden"])
+
+
+_MIX_PHRASE = re.compile(r"^(.+\S)\s+(Original Mix|Extended Mix|Extended Version|Extended|Radio Edit|Club Mix|Dub Mix)$", re.I)
+_REMIX_TAIL = re.compile(r"\S+\s+\S*Remix$", re.I)
+_WEIRD = re.compile(r'[<>|*?"]|(?<!\S)(?=[\W_])[^\s&+/\-](?=[\s,]|$)')
+
+
+def _paren_mix(title: str, fp: tuple[str, str] | None, flags: list[str]) -> str:
+    if title.endswith(")"):
+        return title
+    m = _TAIL_GROUP.search(fp[1]) if fp else None
+    if m:  # el nombre de fichero ya trae el paréntesis: reutilizarlo sobre las palabras del tag
+        words = title.split()
+        for k in range(len(words) - 1, 0, -1):
+            if _same(" ".join(words[k:]), m.group(1)[1:-1]) and _same(" ".join(words[:k]), fp[1][: m.start()]):
+                return f"{' '.join(words[:k])} ({' '.join(words[k:])})"
+    if m := _MIX_PHRASE.match(title):
+        return f"{m.group(1)} ({m.group(2)})"
+    if _REMIX_TAIL.search(title):
+        flags.append("remix sin paréntesis, revisar")
+    return title
+
+
+def propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Proposal:
+    p = _propose(filename, tag_artist, tag_title)
+    if p.artist and p.title:
+        p.title = _paren_mix(p.title, parse_filename(filename), p.flags)
+        if _WEIRD.search(p.artist) or _WEIRD.search(p.title):
+            p.flags.append("caracteres raros en artista o título")
+    return p
