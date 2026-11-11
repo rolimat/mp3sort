@@ -103,3 +103,14 @@ def test_conflict_with_dest(tmp_path):
     (item,) = scan(src, dest)
     assert "ya existe en destino" in item.proposal.flags
     assert item.selected is False
+
+
+@needs_audio
+def test_scan_bitrate(tmp_path):
+    src = tmp_path / "src"
+    put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
+    fake(src, "Nova - Ruta.mp3")
+    good, bad = scan(src, tmp_path)
+    assert isinstance(good.bitrate, int) and good.bitrate > 0
+    assert isinstance(good.vbr, bool)
+    assert bad.bitrate is None and bad.vbr is False

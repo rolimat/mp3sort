@@ -41,9 +41,9 @@ def test_render():
     ]
     out = render(items)
     lines = out.splitlines()
-    assert lines[0].startswith("✓") and "1" in lines[0] and "a.mp3" in lines[0]
+    assert lines[0].startswith("  ✓") and "1" in lines[0] and "a.mp3" in lines[0]
     assert "→ Lumen - Prisma.mp3" in lines[0]
-    assert lines[1].startswith(" ") and "⚠ [ya existe en destino]" in lines[1]
+    assert lines[1].startswith("⚠   ") and lines[1].endswith("[ya existe en destino]")
     assert "L" * 49 + "…" in lines[1] and "L" * 50 not in lines[1]
     assert lines[-1] == "1 ok · 1 ⚠"
 
@@ -142,3 +142,28 @@ def test_main_summary_copied_without_delete(tmp_path, monkeypatch, capsys):
     assert main([str(dest), "--source", str(src)], input_fn=feed("1", "")) == 0
     out = capsys.readouterr().out
     assert "Movidos: 0 · Quedan en origen: 0 · Copiados sin borrar original: 1" in out
+
+
+def test_render_bitrate_column():
+    dup = "duplicado de "
+    items = [
+        Item(Path("/x/a.mp3"), Proposal("Lumen", "Prisma", [dup + "2"]), False, 320),
+        Item(Path("/x/b.mp3"), Proposal("Lumen", "Prisma", [dup + "1"]), False, 245, True),
+        Item(Path("/x/c.mp3"), Proposal("Nube", "Eco", []), True),
+        Item(Path("/x/d.mp3"), Proposal("Nube", "Eco2", ["ya existe en destino"]), False),
+    ]
+    lines = render(items).splitlines()
+    assert "Lumen - Prisma.mp3  320 kbps      [duplicado de 2]" in lines[0]
+    assert "245 kbps VBR  [duplicado de 1]" in lines[1]
+    assert lines[2].endswith("? kbps") and "[" not in lines[2]
+    assert lines[0].index("[") == lines[1].index("[")  # motivos alineados
+
+
+@needs_audio
+def test_main_prompt_on_own_line(tmp_path, capsys):
+    src, dest = folders(tmp_path)
+    put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
+    prompts = []
+    main([str(dest), "--source", str(src)], input_fn=lambda p="": prompts.append(p) or "q")
+    assert prompts == ["> "]
+    assert "Enter = aplicar" in capsys.readouterr().out

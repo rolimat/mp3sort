@@ -5,7 +5,7 @@ from sorter.apply import apply_item
 from sorter.scan import Item, scan
 
 DEFAULT_SOURCE = Path.home() / "Soulseek Downloads" / "complete"
-PROMPT = "Números a EXCLUIR/INCLUIR (ej. 3,5), Enter = aplicar, q = salir: "
+HELP = "Números a EXCLUIR/INCLUIR (ej. 3,5), Enter = aplicar, q = salir"
 
 
 def _short(name: str, n: int = 50) -> str:
@@ -14,13 +14,16 @@ def _short(name: str, n: int = 50) -> str:
 
 def render(items: list[Item]) -> str:
     lines = []
-    for n, it in enumerate(items, 1):
+    names = [it.proposal.filename or "(sin nombre)" for it in items]
+    w = max(map(len, names), default=0)
+    for n, (it, name) in enumerate(zip(items, names), 1):
         p = it.proposal
-        mark = "✓" if it.selected else " "
-        line = f"{mark} {n:>3}  {_short(it.src.name):<50} → {p.filename or '(sin nombre)'}"
+        mark = ("⚠" if p.flags else " ") + " " + ("✓" if it.selected else " ")
+        rate = "? kbps" if it.bitrate is None else f"{it.bitrate} kbps" + (" VBR" if it.vbr else "")
+        line = f"{mark} {n:>3}  {_short(it.src.name):<50} → {name:<{w}}  {rate:<12}"
         if p.flags:
-            line += f"  ⚠ [{'; '.join(p.flags)}]"
-        lines.append(line)
+            line += f"  [{'; '.join(p.flags)}]"
+        lines.append(line.rstrip())
     warn = sum(1 for it in items if it.proposal.flags)
     lines.append(f"{len(items) - warn} ok · {warn} ⚠")
     return "\n".join(lines)
@@ -59,8 +62,9 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
         return 0
     while True:
         print(render(items))
+        print(HELP)
         try:
-            text = input_fn(PROMPT).strip()
+            text = input_fn("> ").strip()
         except EOFError:
             text = "q"
         if text.lower() == "q":

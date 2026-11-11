@@ -1,6 +1,7 @@
 import shutil
 from pathlib import Path
 
+from mutagen import apev2
 from mutagen.id3 import ID3, TIT2, TPE1, ID3NoHeaderError
 from mutagen.mp3 import MP3
 
@@ -42,9 +43,15 @@ def apply_item(item: Item, dest: Path) -> str | None:
         for k in ("TALB", "TCON", "COMM"):
             tags.delall(k)
         tags.save(target, v1=1, v2_version=v2)
+        apev2.delete(target)  # APEv2 lleva basura (webs, comentarios); PRIV/Traktor (ID3) se conserva
         chk = ID3(target)
         if chk["TPE1"].text != [item.proposal.artist] or chk["TIT2"].text != [item.proposal.title]:
             raise ValueError("los tags escritos no coinciden")
+        try:
+            apev2.APEv2(target)
+            raise ValueError("queda un tag APEv2")
+        except apev2.APENoHeaderError:
+            pass
         if abs(MP3(target).info.length - MP3(item.src).info.length) > 0.1:
             raise ValueError("la duración cambió")
     except Exception as e:

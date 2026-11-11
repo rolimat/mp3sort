@@ -3,7 +3,8 @@ import shutil
 from pathlib import Path
 
 import pytest
-from mutagen.id3 import COMM, ID3, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TPUB
+from mutagen.apev2 import APEv2, APENoHeaderError
+from mutagen.id3 import COMM, ID3, PRIV, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TPUB
 
 from sorter.apply import apply_item
 from sorter.clean import Proposal
@@ -172,3 +173,52 @@ def test_apply_no_id3_header(tmp_path):
     assert apply_item(item, dest) is None
     t = ID3(dest / "Lumen - Prisma.mp3")
     assert t["TPE1"].text == ["Lumen"] and t.version[1] == 4
+
+
+def add_ape(f):
+    a = APEv2()
+    a["COMMENT"], a["ARTIST"], a["WWW"] = "www.example.com", "Lumen x Otro", "www.example.com"
+    a.save(f)
+
+
+@needs_audio
+def test_apply_deletes_apev2_keeps_priv(tmp_path):
+    item, dest = setup(tmp_path)
+    t = ID3(item.src)
+    t.add(PRIV(owner="TRAKTOR4", data=b"\x01\x02inventado"))
+    t.save(item.src, v2_version=3)
+    add_ape(item.src)
+    priv = sorted(p.data for p in ID3(item.src).getall("PRIV:TRAKTOR4"))
+    assert apply_item(item, dest) is None
+    out = dest / "Lumen - Prisma.mp3"
+    with pytest.raises(APENoHeaderError):
+        APEv2(out)
+    t = ID3(out)
+    assert sorted(p.data for p in t.getall("PRIV:TRAKTOR4")) == priv
+    assert b"\x01\x02inventado" in priv
+    assert t["TPE1"].text == ["Lumen"] and t["TKEY"].text == ["Am"]
+
+
+@needs_audio
+def test_apply_apev2_failure_keeps_original_ape(tmp_path, monkeypatch):
+    item, dest = setup(tmp_path)
+    add_ape(item.src)
+    h = sha(item.src)
+
+    def boom(*a, **k):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(ID3, "save", boom)
+    assert apply_item(item, dest)
+    assert list(dest.iterdir()) == [] and sha(item.src) == h
+    assert APEv2(item.src)["WWW"] == "www.example.com"
+
+
+@needs_audio
+def test_apply_verification_fails_if_ape_remains(tmp_path, monkeypatch):
+    item, dest = setup(tmp_path)
+    add_ape(item.src)
+    h = sha(item.src)
+    monkeypatch.setattr("sorter.apply.apev2.delete", lambda *a, **k: None)
+    assert apply_item(item, dest)
+    assert list(dest.iterdir()) == [] and sha(item.src) == h

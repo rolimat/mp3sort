@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import mutagen
+from mutagen.mp3 import MP3, BitrateMode
 
 from sorter.clean import Proposal, propose
 
@@ -12,6 +13,8 @@ class Item:
     src: Path
     proposal: Proposal
     selected: bool  # por defecto: not proposal.flags
+    bitrate: int | None = None  # kbps
+    vbr: bool = False
 
 
 def name_key(name: str) -> str:
@@ -36,6 +39,14 @@ def _read(p: Path) -> Proposal:
     return prop
 
 
+def _bitrate(p: Path) -> tuple[int | None, bool]:
+    try:
+        i = MP3(p).info
+        return i.bitrate // 1000, i.bitrate_mode == BitrateMode.VBR
+    except Exception:
+        return None, False
+
+
 def mark_collisions(items: list[Item], dest: Path) -> None:
     groups: dict[str, list[int]] = {}
     for n, it in enumerate(items, 1):
@@ -56,6 +67,6 @@ def mark_collisions(items: list[Item], dest: Path) -> None:
 def scan(source: Path, dest: Path) -> list[Item]:
     files = sorted(p for p in source.rglob("*")
                    if p.is_file() and p.suffix.lower() == ".mp3" and not p.name.startswith("."))
-    items = [Item(p, _read(p), False) for p in files]
+    items = [Item(p, _read(p), False, *_bitrate(p)) for p in files]
     mark_collisions(items, dest)
     return items
