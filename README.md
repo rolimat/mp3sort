@@ -9,11 +9,11 @@ Downloads arrive with messy names (`Lumen - Prisma - www.example.com.mp3`, `07. 
 ## Installation
 
 ```sh
-git clone https://github.com/rolimat/mp3sort.git
+git clone <repository-url>
 cd mp3sort
 ```
 
-**Terminal version.** Works with any Python 3.14:
+**Terminal version.** Works with any Python 3.14 and does not need tkinter:
 
 ```sh
 python3 -m venv .venv
@@ -52,7 +52,7 @@ Columns: ⚠ flag, ✓ (selected), number, original → proposed name (names ove
 - Enter: apply the selected files;
 - `q` (or end of input): quit without doing anything.
 
-A file with no proposed name cannot be included. When done it prints `Moved: N · Left in source: M`.
+A file with no proposed name cannot be included. If the source has no mp3 files it prints `No mp3 files in source`. While applying, it prints one line per file (`✓` moved, `!` copied but original not deleted, `✗` failed with the message), then `Moved: N · Left in source: M`.
 
 ## GUI usage
 
@@ -64,7 +64,7 @@ Launch it with either:
 
 or double-click `mp3sort-gui.command` in Finder. macOS may block the first double-click because the script is not signed: right-click it and choose Open, or allow it in System Settings > Privacy & Security.
 
-1. **Choose folders.** Use the `Choose…` buttons next to Source and Destination; they open the native folder picker. Both choices are remembered in `~/Library/Application Support/mp3sort/settings.json`. The source defaults to `~/Soulseek Downloads/complete` until you pick another.
+1. **Choose folders.** Use the `Choose…` buttons next to Source and Destination; they open the native folder picker. Both choices are remembered in `~/Library/Application Support/mp3sort/settings.json`. The source defaults to `~/Soulseek Downloads/complete` when the settings file is missing or unreadable.
 2. **Scan.** The Scan button is enabled once both folders are set. The table lists every `.mp3` with the columns ⚠, ✓, `#`, `New name` and `kbps`.
 3. **Select.** Flagged rows start unchecked. Click the ✓ cell of a row, or select the row and press Space, to toggle it. A row with no proposed name cannot be checked. The footer shows `N ok · M ⚠ · K selected`.
 4. **Inspect.** Selecting a row fills the "Selected track" panel with: Original file, Folder, Artist, Title, Album, Genre and Comment (old value → `(empty)`), APE tag (`present → removed` or `none`), Quality (bitrate and duration) and Warning.
@@ -85,14 +85,14 @@ While files are being moved the window cannot be closed, including with Cmd+Q; i
 
 ### Files flagged with ⚠ (not selected by default)
 
-The reasons shown are: `tag and file name differ`; `artist and title swapped?`; `'(group)' missing from file name` / `'(group)' added from file name`; `no tags, taken from file name`; `title contains the artist`; `no artist or title`; `odd characters in artist or title` (`< > | * "`, or any stray symbol between spaces such as ` ? ` or ` ! `; `&` `+` `/` `-` and `x` are exempt, and a `?` attached to a word like `Where To Go?` is fine); `tags unreadable`; `duplicate of N` (within the batch); `already exists in destination`.
+The reasons shown are: `tag and file name differ`; `artist and title swapped?`; `'(group)' missing from file name` / `'(group)' added from file name`; `no tags, taken from file name`; `title contains the artist`; `no artist or title`; `odd characters in artist or title` (`< > | * "`, or any stray symbol between spaces such as ` ? ` or ` ! `; `&` `+` `/` `-` and `x` are exempt, and a `?` attached to a word like `Where To Go?` is fine); `tags unreadable`; `remix without parentheses, check`; `duplicate of N` (within the batch); `already exists in destination`.
 
 ### Tags
 
 - `album`, `comment` and `genre` are emptied; `artist` and `title` are written clean.
 - The APEv2 tag is removed entirely.
 - **Traktor:** the private frame `PRIV:TRAKTOR4` is kept on purpose. Traktor may store its own copy of the comment in that block and keep showing it even after the tag is emptied.
-- All other ID3 frames are left untouched. ID3 v2.3/v2.4 is written (v2.2 is rewritten as v2.4) plus ID3v1.
+- All other ID3 frames are left untouched. ID3 v2.3/v2.4 is written (v2.2 is rewritten as v2.4) and an existing ID3v1 tag is updated too (none is created).
 
 ### Safe moves
 
