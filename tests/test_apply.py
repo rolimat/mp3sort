@@ -222,3 +222,22 @@ def test_apply_verification_fails_if_ape_remains(tmp_path, monkeypatch):
     monkeypatch.setattr("sorter.apply.apev2.delete", lambda *a, **k: None)
     assert apply_item(item, dest)
     assert list(dest.iterdir()) == [] and sha(item.src) == h
+
+
+@needs_audio
+def test_apply_big_ape_on_cbr_without_xing(tmp_path):
+    src, dest = tmp_path / "src", tmp_path / "dest"
+    src.mkdir()
+    dest.mkdir()
+    f = src / "x.mp3"
+    f.write_bytes((b"\xff\xfb\x90\x00" + b"\x00" * 413) * 600)  # CBR 128k sin Xing
+    t = ID3()
+    t.add(TPE1(encoding=3, text="Viejo"))
+    t.save(f, v1=0)
+    a = APEv2()
+    a["WWW"], a["BIG"] = "www.example.com", "x" * 5000
+    a.save(f)
+    item = Item(f, Proposal("Lumen", "Prisma", []), True)
+    assert apply_item(item, dest) is None
+    out = dest / "Lumen - Prisma.mp3"
+    assert out.exists() and not f.exists() and b"APETAGEX" not in out.read_bytes()

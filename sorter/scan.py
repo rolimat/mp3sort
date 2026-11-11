@@ -42,7 +42,7 @@ def _read(p: Path) -> Proposal:
 def _bitrate(p: Path) -> tuple[int | None, bool]:
     try:
         i = MP3(p).info
-        return i.bitrate // 1000, i.bitrate_mode == BitrateMode.VBR
+        return (i.bitrate // 1000 or None), i.bitrate_mode == BitrateMode.VBR
     except Exception:
         return None, False
 

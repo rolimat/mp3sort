@@ -167,3 +167,11 @@ def test_main_prompt_on_own_line(tmp_path, capsys):
     main([str(dest), "--source", str(src)], input_fn=lambda p="": prompts.append(p) or "q")
     assert prompts == ["> "]
     assert "Enter = aplicar" in capsys.readouterr().out
+
+
+def test_render_long_destination_capped():
+    it = Item(Path("/x/a.mp3"), Proposal("L" * 80, "Eco", ["ya existe en destino"]), False, 320)
+    line = render([it]).splitlines()[0]
+    assert "L" * 80 not in line and "… " in line
+    assert line.endswith("320 kbps      [ya existe en destino]")
+    assert len(line) < 160

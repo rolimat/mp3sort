@@ -14,7 +14,7 @@ def _short(name: str, n: int = 50) -> str:
 
 def render(items: list[Item]) -> str:
     lines = []
-    names = [it.proposal.filename or "(sin nombre)" for it in items]
+    names = [_short(it.proposal.filename or "(sin nombre)") for it in items]
     w = max(map(len, names), default=0)
     for n, (it, name) in enumerate(zip(items, names), 1):
         p = it.proposal

@@ -114,3 +114,13 @@ def test_scan_bitrate(tmp_path):
     assert isinstance(good.bitrate, int) and good.bitrate > 0
     assert isinstance(good.vbr, bool)
     assert bad.bitrate is None and bad.vbr is False
+
+
+def test_scan_bitrate_zero_is_none(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import sorter.scan
+    src = tmp_path / "src"
+    fake(src, "Nova - Ruta.mp3")
+    monkeypatch.setattr(sorter.scan, "MP3", lambda p: SimpleNamespace(
+        info=SimpleNamespace(bitrate=0, bitrate_mode=None)))
+    assert scan(src, tmp_path)[0].bitrate is None
