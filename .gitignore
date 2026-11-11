@@ -1,0 +1,7 @@
+.venv/
+sandbox/
+report/
+__pycache__/
+.superpowers/
+tests/fixtures/audio/
+docs/
