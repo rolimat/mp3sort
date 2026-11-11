@@ -16,7 +16,7 @@ needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing a1.mp3")
 
 
 def item(tmp_path, name="a.mp3", flags=(), fn="A - B.mp3", sel=True):
-    return Item(tmp_path / name, Proposal("A", "B", list(flags), ) if fn else Proposal(None, None, list(flags)), sel)
+    return Item(tmp_path / name, Proposal("A", "B", list(flags)) if fn else Proposal(None, None, list(flags)), sel)
 
 
 def test_settings(tmp_path):
@@ -59,7 +59,7 @@ def test_detail(tmp_path):
     shutil.copy(AUDIO, f)
     t = ID3(f)
     t.add(TALB(encoding=3, text="Disco"))
-    t.add(COMM(encoding=3, lang="eng", desc="", text="hola"))
+    t.add(COMM(encoding=3, lang="eng", desc="", text="promo text"))
     t.save(f)
     a = APEv2()
     a["Comment"] = "www.example.com"
@@ -70,7 +70,7 @@ def test_detail(tmp_path):
     d = dict(m.detail(0))
     assert list(d) == ["Original file", "Folder", "Artist", "Title", "Album", "Genre",
                        "Comment", "APE tag", "Quality", "Warning"]
-    assert d["Album"] == "Disco → (empty)" and d["Comment"] == "hola → (empty)"
+    assert d["Album"] == "Disco → (empty)" and d["Comment"] == "promo text → (empty)"
     assert d["Genre"] == "(empty)" and d["APE tag"] == "present → removed"
     assert d["Quality"].startswith("320 kbps VBR · ") and d["Warning"] == "⚠ w"
     assert f.read_bytes() == before
@@ -104,3 +104,17 @@ def test_move_and_summary(tmp_path, monkeypatch):
     assert m.summary(res) == "Moved: 1 · Left in source: 2 · Copied without deleting original: 1"
     assert m.summary([(its[0], None)]).startswith("Moved: 1 · Left in source: 3")
     assert "Copied" not in m.summary([(its[0], None)])
+
+
+def test_settings_default_path_at_call_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(gm, "SETTINGS_PATH", tmp_path / "t" / "s.json")
+    a, b = tmp_path / "a", tmp_path / "b"
+    save_settings(a, b)
+    assert load_settings() == (a, b)
+    assert (tmp_path / "t" / "s.json").exists()
+
+
+def test_scan_error_clears_items(tmp_path):
+    m = Model(tmp_path / "gone", tmp_path)
+    m.items = [item(tmp_path)]
+    assert m.scan() is not None and m.items == []

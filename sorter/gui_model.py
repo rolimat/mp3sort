@@ -14,7 +14,8 @@ from sorter.scan import Item, scan
 SETTINGS_PATH = Path.home() / "Library" / "Application Support" / "mp3sort" / "settings.json"
 
 
-def load_settings(path: Path = SETTINGS_PATH) -> tuple[Path | None, Path | None]:
+def load_settings(path: Path | None = None) -> tuple[Path | None, Path | None]:
+    path = path or SETTINGS_PATH
     try:
         d = json.loads(path.read_text(encoding="utf-8"))
         s, t = d.get("source"), d.get("destination")
@@ -24,7 +25,8 @@ def load_settings(path: Path = SETTINGS_PATH) -> tuple[Path | None, Path | None]
         return DEFAULT_SOURCE, None
 
 
-def save_settings(source: Path | None, dest: Path | None, path: Path = SETTINGS_PATH) -> None:
+def save_settings(source: Path | None, dest: Path | None, path: Path | None = None) -> None:
+    path = path or SETTINGS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps({"source": str(source) if source else None,
@@ -47,6 +49,7 @@ class Model:
         return bool(self.source and self.dest and not self.busy)
 
     def scan(self) -> str | None:
+        self.items = []
         err = check_folders(self.source, self.dest)
         if err is None:
             self.items = scan(self.source, self.dest)
