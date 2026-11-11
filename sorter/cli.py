@@ -1,11 +1,11 @@
 import argparse
 from pathlib import Path
 
-from sorter.apply import apply_item
+from sorter.apply import COPIED_NOT_DELETED, apply_item
 from sorter.scan import Item, scan
 
 DEFAULT_SOURCE = Path.home() / "Soulseek Downloads" / "complete"
-HELP = "Números a EXCLUIR/INCLUIR (ej. 3,5), Enter = aplicar, q = salir"
+HELP = "Numbers to EXCLUDE/INCLUDE (e.g. 3,5), Enter = apply, q = quit"
 
 
 def _short(name: str, n: int = 50) -> str:
@@ -14,7 +14,7 @@ def _short(name: str, n: int = 50) -> str:
 
 def render(items: list[Item]) -> str:
     lines = []
-    names = [_short(it.proposal.filename or "(sin nombre)") for it in items]
+    names = [_short(it.proposal.filename or "(no name)") for it in items]
     w = max(map(len, names), default=0)
     for n, (it, name) in enumerate(zip(items, names), 1):
         p = it.proposal
@@ -33,32 +33,32 @@ def parse_selection(text: str, n: int) -> list[int]:
     out = []
     for tok in text.replace(",", " ").split():
         if not tok.isdecimal():
-            raise ValueError(f"'{tok}' no es un número")
+            raise ValueError(f"'{tok}' is not a number")
         k = int(tok)
         if not 1 <= k <= n:
-            raise ValueError(f"{k} fuera de rango (1-{n})")
+            raise ValueError(f"{k} is out of range (1-{n})")
         out.append(k - 1)
     return out
 
 
 def main(argv: list[str] | None = None, input_fn=input) -> int:
     ap = argparse.ArgumentParser(prog="mp3sort")
-    ap.add_argument("dest", type=Path, help="carpeta destino")
-    ap.add_argument("--source", type=Path, default=None, help="carpeta origen")
+    ap.add_argument("dest", type=Path, help="destination folder")
+    ap.add_argument("--source", type=Path, default=None, help="source folder")
     args = ap.parse_args(argv)
     source = args.source or DEFAULT_SOURCE  # lookup en llamada, no en import
     dest = args.dest
-    for label, d in (("destino", dest), ("origen", source)):
+    for label, d in (("destination", dest), ("source", source)):
         if not d.is_dir():
-            print(f"Error: la carpeta de {label} no existe: {d}")
+            print(f"Error: the {label} folder does not exist: {d}")
             return 2
     s, d = source.resolve(), dest.resolve()
     if s == d or s in d.parents or d in s.parents:
-        print("Error: el destino no puede estar dentro del origen (ni al revés)")
+        print("Error: the destination cannot be inside the source (or vice versa)")
         return 2
     items = scan(source, dest)
     if not items:
-        print("No hay mp3 en el origen")
+        print("No mp3 files in source")
         return 0
     while True:
         print(render(items))
@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
             for i in idx:
                 it = items[i]
                 if not it.selected and it.proposal.filename is None:
-                    print(f"{i + 1}: no se puede incluir (sin nombre propuesto)")
+                    print(f"{i + 1}: cannot include (no proposed name)")
                 else:
                     it.selected = not it.selected
             continue
@@ -91,12 +91,12 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
             if err is None:
                 moved += 1
                 print(f"✓ {it.src.name}")
-            elif err.startswith("copiado y verificado"):
+            elif err.startswith(COPIED_NOT_DELETED):
                 kept += 1
                 print(f"! {it.src.name}: {err}")
             else:
                 left += 1
                 print(f"✗ {it.src.name}: {err}")
-        extra = f" · Copiados sin borrar original: {kept}" if kept else ""
-        print(f"Movidos: {moved} · Quedan en origen: {left}{extra}")
+        extra = f" · Copied without deleting original: {kept}" if kept else ""
+        print(f"Moved: {moved} · Left in source: {left}{extra}")
         return 0

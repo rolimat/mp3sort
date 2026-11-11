@@ -95,9 +95,9 @@ def _propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Pr
     fp = parse_filename(filename)
     if not ta or not tt or " - " in tt:
         if fp:
-            why = "el título contiene el artista" if ta and tt else "sin tags, sacado del nombre de fichero"
+            why = "title contains the artist" if ta and tt else "no tags, taken from file name"
             return Proposal(fp[0], fp[1], [why])
-        return Proposal("", "", ["sin artista o título"])
+        return Proposal("", "", ["no artist or title"])
     if not fp:
         return Proposal(ta, tt, [])
     fa, ft = fp
@@ -108,11 +108,11 @@ def _propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Pr
         m = _TAIL_GROUP.search(long_)
         if m and _same(long_[: m.start()], short):
             g = m.group(1)
-            flag = f"falta '{g}' en el nombre de fichero" if long_ == tt else f"añadido '{g}' desde el nombre de fichero"
+            flag = f"'{g}' missing from file name" if long_ == tt else f"'{g}' added from file name"
             return Proposal(ta, long_, [flag])
     elif all(map(_norm, (ta, tt, fa, ft))) and _norm(tt).startswith(_norm(fa)) and _norm(ft).startswith(_norm(ta)):
-        return Proposal(ta, tt, ["¿artista y título intercambiados?"])
-    return Proposal(ta, tt, ["tag y nombre de fichero no coinciden"])
+        return Proposal(ta, tt, ["artist and title swapped?"])
+    return Proposal(ta, tt, ["tag and file name differ"])
 
 
 _MIX_PHRASE = re.compile(r"^(.+\S)\s+(Original Mix|Extended Mix|Extended Version|Extended|Radio Edit|Club Mix|Dub Mix)$", re.I)
@@ -132,7 +132,7 @@ def _paren_mix(title: str, fp: tuple[str, str] | None, flags: list[str]) -> str:
     if m := _MIX_PHRASE.match(title):
         return f"{m.group(1)} ({m.group(2)})"
     if _REMIX_TAIL.search(title):
-        flags.append("remix sin paréntesis, revisar")
+        flags.append("remix without parentheses, check")
     return title
 
 
@@ -141,5 +141,5 @@ def propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Pro
     if p.artist and p.title:
         p.title = _paren_mix(p.title, parse_filename(filename), p.flags)
         if _WEIRD.search(p.artist) or _WEIRD.search(p.title):
-            p.flags.append("caracteres raros en artista o título")
+            p.flags.append("odd characters in artist or title")
     return p

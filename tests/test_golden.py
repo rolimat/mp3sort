@@ -36,7 +36,7 @@ def test_group_missing_in_filename_flag():
     p = propose("02 - Kiro Vane, Mira Dune - Quiet Harbor.mp3",
                 "Kiro Vane & Mira Dune", "Quiet Harbor (Original Mix)")
     assert p.title == "Quiet Harbor (Original Mix)"
-    assert p.flags == ["falta '(Original Mix)' en el nombre de fichero"]
+    assert p.flags == ["'(Original Mix)' missing from file name"]
 
 
 def test_norm_special_letters():
@@ -67,13 +67,13 @@ def test_mix_phrase_already_parenthesized_untouched():
 
 def test_remix_without_parens_flagged():
     p = propose("Lumen - Prisma Nova Remix.mp3", "Lumen", "Prisma Nova Remix")
-    assert p.title == "Prisma Nova Remix" and p.flags == ["remix sin paréntesis, revisar"]
+    assert p.title == "Prisma Nova Remix" and p.flags == ["remix without parentheses, check"]
 
 
 @pytest.mark.parametrize("a,t", [("Lumen", "Prisma >"), ("Lumen", "Pri|sma"), ("Lumen _, Kiro", "Prisma"),
                                  ("Lumen", "Prisma _ Go"), ("Lu*men", "Prisma")])
 def test_weird_chars_flagged(a, t):
-    assert "caracteres raros en artista o título" in propose("Lumen - Prisma.mp3", a, t).flags
+    assert "odd characters in artist or title" in propose("Lumen - Prisma.mp3", a, t).flags
 
 
 @pytest.mark.parametrize("a,t", [("Ka;ro", "Mira_Vox"), ("lu·na", "Brønd"), ("SÖLÄR VEX", "Z.E.N.I.T"),

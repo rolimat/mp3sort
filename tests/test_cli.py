@@ -4,12 +4,13 @@ from pathlib import Path
 import pytest
 from mutagen.easyid3 import EasyID3
 
+from sorter.apply import COPIED_NOT_DELETED
 from sorter.cli import main, parse_selection, render
 from sorter.clean import Proposal
 from sorter.scan import Item
 
 AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
-needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="falta tests/fixtures/audio/a1.mp3")
+needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing tests/fixtures/audio/a1.mp3")
 
 
 def put(src: Path, name: str, artist: str, title: str) -> Path:
@@ -37,13 +38,13 @@ def test_render():
     long = "L" * 60 + ".mp3"
     items = [
         Item(Path("/x/a.mp3"), Proposal("Lumen", "Prisma", []), True),
-        Item(Path("/x/" + long), Proposal("Lumen", "Eco", ["ya existe en destino"]), False),
+        Item(Path("/x/" + long), Proposal("Lumen", "Eco", ["already exists in destination"]), False),
     ]
     out = render(items)
     lines = out.splitlines()
     assert lines[0].startswith("  ✓") and "1" in lines[0] and "a.mp3" in lines[0]
     assert "→ Lumen - Prisma.mp3" in lines[0]
-    assert lines[1].startswith("⚠   ") and lines[1].endswith("[ya existe en destino]")
+    assert lines[1].startswith("⚠   ") and lines[1].endswith("[already exists in destination]")
     assert "L" * 49 + "…" in lines[1] and "L" * 50 not in lines[1]
     assert lines[-1] == "1 ok · 1 ⚠"
 
@@ -88,7 +89,7 @@ def test_main_toggle_and_apply(tmp_path, capsys):
     assert main([str(dest), "--source", str(src)], input_fn=feed("1", "")) == 0
     assert one.exists() and not two.exists()
     assert [p.name for p in dest.iterdir()] == ["Nube - Eco.mp3"]
-    assert "Movidos: 1 · Quedan en origen: 1" in capsys.readouterr().out
+    assert "Moved: 1 · Left in source: 1" in capsys.readouterr().out
 
 
 @needs_audio
@@ -96,14 +97,14 @@ def test_main_bad_input_reprompts(tmp_path, capsys):
     src, dest = folders(tmp_path)
     put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
     assert main([str(dest), "--source", str(src)], input_fn=feed("9", "q")) == 0
-    assert "fuera de rango" in capsys.readouterr().out
+    assert "is out of range" in capsys.readouterr().out
 
 
 def test_main_cannot_include_unnamed(tmp_path, capsys):
     src, dest = folders(tmp_path)
     (src / "zzz.mp3").write_bytes(b"garbage")
     assert main([str(dest), "--source", str(src)], input_fn=feed("1", "q")) == 0
-    assert "no se puede incluir" in capsys.readouterr().out
+    assert "cannot include" in capsys.readouterr().out
     assert main([str(dest), "--source", str(src)], input_fn=feed("1", "")) == 0
     assert (src / "zzz.mp3").exists() and not list(dest.iterdir())
 
@@ -111,13 +112,13 @@ def test_main_cannot_include_unnamed(tmp_path, capsys):
 def test_main_empty_source(tmp_path, capsys):
     src, dest = folders(tmp_path)
     assert main([str(dest), "--source", str(src)], input_fn=feed()) == 0
-    assert "No hay mp3 en el origen" in capsys.readouterr().out
+    assert "No mp3 files in source" in capsys.readouterr().out
 
 
 def test_main_dest_equals_source(tmp_path, capsys):
     src, _ = folders(tmp_path)
     assert main([str(src), "--source", str(src)], input_fn=feed()) == 2
-    assert "el destino no puede estar dentro del origen" in capsys.readouterr().out
+    assert "the destination cannot be inside the source" in capsys.readouterr().out
 
 
 def test_main_dest_inside_source_and_reverse(tmp_path):
@@ -129,7 +130,7 @@ def test_main_dest_inside_source_and_reverse(tmp_path):
 
 
 def test_parse_selection_superscript():
-    with pytest.raises(ValueError, match="no es un número"):
+    with pytest.raises(ValueError, match="is not a number"):
         parse_selection("²", 5)
 
 
@@ -138,25 +139,25 @@ def test_main_summary_copied_without_delete(tmp_path, monkeypatch, capsys):
     src, dest = folders(tmp_path)
     (src / "Lumen - Prisma.mp3").write_bytes(b"x")
     monkeypatch.setattr(sorter.cli, "apply_item",
-                        lambda it, d: "copiado y verificado, pero no se pudo borrar el original (quedan ambos): x")
+                        lambda it, d: COPIED_NOT_DELETED + ": x")
     assert main([str(dest), "--source", str(src)], input_fn=feed("1", "")) == 0
     out = capsys.readouterr().out
-    assert "Movidos: 0 · Quedan en origen: 0 · Copiados sin borrar original: 1" in out
+    assert "Moved: 0 · Left in source: 0 · Copied without deleting original: 1" in out
 
 
 def test_render_bitrate_column():
-    dup = "duplicado de "
+    dup = "duplicate of "
     items = [
         Item(Path("/x/a.mp3"), Proposal("Lumen", "Prisma", [dup + "2"]), False, 320),
         Item(Path("/x/b.mp3"), Proposal("Lumen", "Prisma", [dup + "1"]), False, 245, True),
         Item(Path("/x/c.mp3"), Proposal("Nube", "Eco", []), True),
-        Item(Path("/x/d.mp3"), Proposal("Nube", "Eco2", ["ya existe en destino"]), False),
+        Item(Path("/x/d.mp3"), Proposal("Nube", "Eco2", ["already exists in destination"]), False),
     ]
     lines = render(items).splitlines()
-    assert "Lumen - Prisma.mp3  320 kbps      [duplicado de 2]" in lines[0]
-    assert "245 kbps VBR  [duplicado de 1]" in lines[1]
+    assert "Lumen - Prisma.mp3  320 kbps      [duplicate of 2]" in lines[0]
+    assert "245 kbps VBR  [duplicate of 1]" in lines[1]
     assert lines[2].endswith("? kbps") and "[" not in lines[2]
-    assert lines[0].index("[") == lines[1].index("[")  # motivos alineados
+    assert lines[0].index("[") == lines[1].index("[")  # reasons aligned
 
 
 @needs_audio
@@ -166,12 +167,12 @@ def test_main_prompt_on_own_line(tmp_path, capsys):
     prompts = []
     main([str(dest), "--source", str(src)], input_fn=lambda p="": prompts.append(p) or "q")
     assert prompts == ["> "]
-    assert "Enter = aplicar" in capsys.readouterr().out
+    assert "Enter = apply" in capsys.readouterr().out
 
 
 def test_render_long_destination_capped():
-    it = Item(Path("/x/a.mp3"), Proposal("L" * 80, "Eco", ["ya existe en destino"]), False, 320)
+    it = Item(Path("/x/a.mp3"), Proposal("L" * 80, "Eco", ["already exists in destination"]), False, 320)
     line = render([it]).splitlines()[0]
     assert "L" * 80 not in line and "… " in line
-    assert line.endswith("320 kbps      [ya existe en destino]")
+    assert line.endswith("320 kbps      [already exists in destination]")
     assert len(line) < 160

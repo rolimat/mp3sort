@@ -35,7 +35,7 @@ def _read(p: Path) -> Proposal:
         err = True
     prop = propose(p.name, artist, title)
     if err:
-        prop.flags.append("no se pueden leer los tags")
+        prop.flags.append("tags unreadable")
     return prop
 
 
@@ -57,9 +57,9 @@ def mark_collisions(items: list[Item], dest: Path) -> None:
         for n in nums:
             flags = items[n - 1].proposal.flags
             if len(nums) > 1:
-                flags.append("duplicado de " + ", ".join(str(m) for m in nums if m != n))
+                flags.append("duplicate of " + ", ".join(str(m) for m in nums if m != n))
             if key in existing:
-                flags.append("ya existe en destino")
+                flags.append("already exists in destination")
     for it in items:
         it.selected = not it.proposal.flags
 

@@ -9,7 +9,7 @@ from mutagen.easyid3 import EasyID3
 from sorter.scan import name_key, scan
 
 AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
-needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="falta tests/fixtures/audio/a1.mp3")
+needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing tests/fixtures/audio/a1.mp3")
 
 
 def put(path: Path, name: str, artist=None, title=None) -> Path:
@@ -80,7 +80,7 @@ def test_duplicates_flagged(tmp_path):
     items = scan(src, tmp_path / "dest")
     assert len(items) == 2
     for n, i in enumerate(items):
-        assert any(f == f"duplicado de {2 - n}" for f in i.proposal.flags)
+        assert any(f == f"duplicate of {2 - n}" for f in i.proposal.flags)
         assert i.selected is False
 
 
@@ -90,7 +90,7 @@ def test_duplicate_unicode_case(tmp_path):
     fake(src / "y", unicodedata.normalize("NFD", "sölär - x.mp3"))
     items = scan(src, tmp_path / "dest")
     assert len(items) == 2
-    assert all(any(f.startswith("duplicado de ") for f in i.proposal.flags) for i in items)
+    assert all(any(f.startswith("duplicate of ") for f in i.proposal.flags) for i in items)
     assert name_key("SÖLÄR") == name_key(unicodedata.normalize("NFD", "sölär"))
 
 
@@ -101,7 +101,7 @@ def test_conflict_with_dest(tmp_path):
     dest.mkdir()
     (dest / "lumen - prisma.mp3").write_bytes(b"x")
     (item,) = scan(src, dest)
-    assert "ya existe en destino" in item.proposal.flags
+    assert "already exists in destination" in item.proposal.flags
     assert item.selected is False
 
 

@@ -11,7 +11,7 @@ from sorter.clean import Proposal
 from sorter.scan import Item
 
 AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
-needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="falta tests/fixtures/audio/a1.mp3")
+needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing tests/fixtures/audio/a1.mp3")
 KEEP = ("TKEY", "TBPM", "TDRC", "TPUB")
 
 

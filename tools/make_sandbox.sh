@@ -4,13 +4,13 @@
 set -euo pipefail
 
 if [ "$#" -lt 1 ]; then
-  echo "Uso: $0 <carpeta> [<carpeta>...]" >&2
+  echo "Usage: $0 <carpeta> [<carpeta>...]" >&2
   exit 1
 fi
 ROOT="${MP3SORT_SANDBOX_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 ROOT="$(cd "$ROOT" && pwd -P)"
 if [ "$ROOT" -ef / ] || [ "$ROOT" -ef "$HOME" ]; then
-  echo "Error: raiz insegura: $ROOT" >&2
+  echo "Error: unsafe root: $ROOT" >&2
   exit 1
 fi
 SANDBOX="$ROOT/sandbox"
@@ -19,12 +19,12 @@ SANDBOX="$ROOT/sandbox"
 SRCS=()
 for f in "$@"; do
   if [ ! -d "$f" ]; then
-    echo "Error: no existe la carpeta: $f" >&2
+    echo "Error: folder does not exist: $f" >&2
     exit 1
   fi
   abs="$(cd "$f" && pwd -P)"
   if [[ "${abs%/}/" == "$SANDBOX/"* || "$SANDBOX/" == "${abs%/}/"* ]]; then
-    echo "Error: la carpeta esta dentro de sandbox o lo contiene: $f" >&2
+    echo "Error: folder is inside sandbox or contains it: $f" >&2
     exit 1
   fi
   SRCS+=("$abs")
@@ -32,7 +32,7 @@ done
 
 if [ -e "$SANDBOX" ]; then
   if [ ! -f "$SANDBOX/.mp3sort-sandbox" ]; then
-    echo "Error: $SANDBOX existe y no tiene marcador .mp3sort-sandbox; no se borra" >&2
+    echo "Error: $SANDBOX exists and has no .mp3sort-sandbox marker; not deleting" >&2
     exit 1
   fi
   rm -rf "$SANDBOX"
@@ -44,5 +44,5 @@ for f in "${SRCS[@]}"; do
   cp -R -- "$f" sandbox/complete/
 done
 
-echo "Sandbox listo en $SANDBOX"
-echo "Ejecuta: .venv/bin/python mp3sort.py --source sandbox/complete sandbox/dest"
+echo "Sandbox ready at $SANDBOX"
+echo "Run: .venv/bin/python mp3sort.py --source sandbox/complete sandbox/dest"

@@ -20,12 +20,12 @@ def build_report(cases: list[dict]) -> str:
     rows.sort(key=lambda r: not r[0])  # estable: ⚠ primero
     bad = sum(r[0] for r in rows)
     out = [f"{len(rows) - bad} ok · {bad} ⚠", "",
-           "| # | fichero original | tag artista | tag título | propuesto | ⚠ motivo |",
+           "| # | original file | tag artist | tag title | proposed | ⚠ reason |",
            "|---|---|---|---|---|---|"]
     for i, (flag, c, p) in enumerate(rows, 1):
-        motivo = ("⚠ " + "; ".join(p.flags)) if flag else ""
+        reason = ("⚠ " + "; ".join(p.flags)) if flag else ""
         out.append("| " + " | ".join(cell(x) for x in (
-            str(i), c["filename"], c.get("artist"), c.get("title"), p.filename, motivo)) + " |")
+            str(i), c["filename"], c.get("artist"), c.get("title"), p.filename, reason)) + " |")
     return "\n".join(out) + "\n"
 
 

@@ -8,17 +8,20 @@ from mutagen.mp3 import MP3
 from sorter.scan import Item, name_key
 
 
+COPIED_NOT_DELETED = "copied and verified, but the original could not be deleted (both remain)"
+
+
 def apply_item(item: Item, dest: Path) -> str | None:
     """Mueve item.src a dest con tags limpios. None si va bien, o mensaje de error."""
     name = item.proposal.filename
     if name is None:
-        return "sin nombre propuesto"
+        return "no proposed name"
     target = dest / name
     try:
         if any(name_key(p.name) == name_key(name) for p in dest.iterdir()):
-            return "ya existe en destino, no se sobrescribe"
+            return "already exists in destination, not overwritten"
     except OSError as e:
-        return f"no se pudo leer el destino: {e}"
+        return f"cannot read destination: {e}"
     try:
         with open(item.src, "rb") as r, open(target, "xb") as w:  # "x": nunca sobrescribe
             try:
@@ -28,9 +31,9 @@ def apply_item(item: Item, dest: Path) -> str | None:
                 target.unlink(missing_ok=True)  # solo si open "xb" tuvo éxito: es nuestra
                 raise
     except FileExistsError:
-        return "ya existe en destino, no se sobrescribe"
+        return "already exists in destination, not overwritten"
     except OSError as e:
-        return f"no se pudo copiar: {e}"
+        return f"copy failed: {e}"
     try:
         shutil.copystat(item.src, target)
         try:
@@ -47,25 +50,25 @@ def apply_item(item: Item, dest: Path) -> str | None:
         apev2.delete(target)  # APEv2 lleva basura (webs, comentarios); PRIV/Traktor (ID3) se conserva
         chk = ID3(target)
         if chk["TPE1"].text != [item.proposal.artist] or chk["TIT2"].text != [item.proposal.title]:
-            raise ValueError("los tags escritos no coinciden")
+            raise ValueError("written tags do not match")
         try:
             apev2.APEv2(target)
-            raise ValueError("queda un tag APEv2")
+            raise ValueError("an APEv2 tag remains")
         except apev2.APENoHeaderError:
             pass
         info = MP3(target).info
         # sin cabecera Xing mutagen estima la duración con el tamaño total: el APE borrado la acorta
         extra = (size0 - target.stat().st_size) * 8 / info.bitrate if info.bitrate else 0
         if abs(info.length - MP3(item.src).info.length) > 0.1 + extra:
-            raise ValueError("la duración cambió")
+            raise ValueError("duration changed")
     except Exception as e:
         target.unlink(missing_ok=True)
-        return f"error al escribir tags, original intacto: {e}"
+        return f"error writing tags, original untouched: {e}"
     except BaseException:  # Ctrl-C: no dejar una copia sin verificar
         target.unlink(missing_ok=True)
         raise
     try:
         item.src.unlink()
     except OSError as e:
-        return f"copiado y verificado, pero no se pudo borrar el original (quedan ambos): {e}"
+        return f"{COPIED_NOT_DELETED}: {e}"
     return None
