@@ -46,6 +46,13 @@ class Model:
         self._scanned: tuple | None = None  # (source, dest) the rows were scanned from
         self._g: dict[str, list[int]] | None = None  # cached _groups(), reset on scan/edit/reset
 
+    def set_folder(self, kind: str, path: Path) -> None:
+        if kind == "source":
+            self.source = path
+        else:
+            self.dest = path
+        self.rows, self._existing, self._scanned, self._g = [], set(), None, None  # scan required again
+
     def can_scan(self) -> bool:
         return bool(self.source and self.dest and not self.busy)
 

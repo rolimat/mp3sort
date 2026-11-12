@@ -5,7 +5,11 @@ import threading
 import pytest
 from conftest import audio_path
 
-from sorter.gui_api import Api
+from pathlib import Path
+
+from sorter.gui_api import ApiImpl, js_api
+from sorter.gui_model import Row
+from sorter.scan import Item
 from sorter.gui_model import Model, load_settings
 
 
@@ -24,7 +28,7 @@ def env(tmp_path):
             done.set()
 
     picked = {"v": None}
-    api = Api(Model(src, dst), choose_folder=lambda kind: picked["v"], push=push)
+    api = ApiImpl(Model(src, dst), choose_folder=lambda kind: picked["v"], push=push)
     api.events, api.done, api.picked, api.src, api.dst = events, done, picked, src, dst
     return api
 
@@ -121,3 +125,92 @@ def test_busy_blocks(env):
     for call in (env.scan, lambda: env.edit(0, "artist", "x"), lambda: env.toggle(0), env.move):
         assert call()["error"] == "busy"
     assert env.state()["state"]["busy"]
+
+
+NAMES = {"state", "choose", "pending_edits", "scan", "edit", "toggle", "reset", "move",
+         "can_close", "set_editing"}
+
+
+def test_facade_exposes_only_api(env):
+    f = js_api(env)
+    assert {n for n in dir(f) if not n.startswith("_")} == NAMES
+    assert not hasattr(f, "__dict__") or not vars(f)
+    env.scan()
+    bad = (Model, Row, Item, Path, ApiImpl)
+    seen = 0
+
+    def walk(obj, depth):
+        nonlocal seen
+        for n in dir(obj):
+            if n.startswith("_"):
+                continue
+            try:
+                v = getattr(obj, n)
+            except Exception:
+                continue
+            seen += 1
+            assert not isinstance(v, bad), n
+            if depth < 4:
+                walk(v, depth + 1)
+    walk(f, 1)
+    assert seen
+
+
+def test_facade_behaves_like_impl(env):
+    f = js_api(env)
+    assert f.scan()["state"]["counts"]["tracks"] == 2
+    assert f.edit(0, "artist", "Zed")["ok"] and f.pending_edits() == 1
+    assert f.edit(9, "artist", "x")["ok"] is False
+    assert f.can_close() is True and f.set_editing(True)["ok"]
+    assert f.move()["error"] == "finish editing first"
+    assert f.state() == env.state()
+
+
+def test_concurrent_move_starts_one(env, monkeypatch):
+    env.scan()
+    gate, calls = threading.Event(), []
+
+    def slow(progress):
+        calls.append(1)
+        gate.wait(10)
+        return []
+    monkeypatch.setattr(env.model, "move", slow)
+    res = []
+    ts = [threading.Thread(target=lambda: res.append(env.move()["error"])) for _ in range(2)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert sorted(map(str, res)) == ["None", "busy"]
+    gate.set()
+    assert env.done.wait(10) and len(calls) == 1
+
+
+def test_choose_save_error(env, tmp_path, monkeypatch):
+    env.scan()
+    new = tmp_path / "other"
+    new.mkdir()
+    env.picked["v"] = str(new)
+
+    def boom(*a):
+        raise OSError("disk full")
+    monkeypatch.setattr("sorter.gui_api.save_settings", boom)
+    r = env.choose("source")
+    assert r["ok"] is False and r["error"].startswith("could not save settings")
+    assert r["state"]["rows"] == [] and r["state"]["folders"]["source"] == str(new)
+
+
+def test_done_always_pushed(env, monkeypatch):
+    env.scan()
+
+    def boom(progress):
+        raise RuntimeError("kaput")
+    monkeypatch.setattr(env.model, "move", boom)
+    env.move()
+    assert env.done.wait(10)
+    d = [d for e, d in env.events if e == "done"][0]
+    assert "kaput" in d["error"] and d["state"]["busy"] is False
+
+
+def test_set_folder_clears(env):
+    env.scan()
+    env.model.set_folder("destination", env.dst)
+    assert env.model.rows == [] and env.model._existing == set()

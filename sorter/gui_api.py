@@ -8,10 +8,11 @@ from sorter.gui_model import Model, save_settings
 MAX_VALUE = 500
 
 
-class Api:
+class ApiImpl:
     def __init__(self, model: Model, choose_folder=lambda kind: None, push=lambda event, data: None):
         self.model, self._choose, self._push = model, choose_folder, push
         self._editing = False
+        self._lock = threading.Lock()  # pywebview runs each JS call on its own thread
         self._moving = False  # set before the thread starts, so there is no gap with model.busy
 
     # -- state ---------------------------------------------------------------
@@ -56,57 +57,64 @@ class Api:
         return self.model.edited_count()
 
     def set_editing(self, on) -> dict:
+        # allowed while busy (like pending_edits): it only records page state
         if not isinstance(on, bool):
             return self._res("invalid value")
-        self._editing = on
+        with self._lock:
+            self._editing = on
         return self._res()
 
     def choose(self, kind) -> dict:
         if kind not in ("source", "destination"):
             return self._res("invalid folder kind")
-        if err := self._guard(editing=True):
-            return self._res(err)
-        folder = self._choose(kind)
-        if not folder or not isinstance(folder, str):
-            return self._res("cancelled")
-        m = self.model
-        if kind == "source":
-            m.source = Path(folder)
-        else:
-            m.dest = Path(folder)
-        save_settings(m.source, m.dest)
-        m.rows, m._scanned, m._g = [], None, None  # scan required again
-        return self._res()
+        with self._lock:
+            if err := self._guard(editing=True):
+                return self._res(err)
+            folder = self._choose(kind)
+            if not folder or not isinstance(folder, str):
+                return self._res("cancelled")
+            m = self.model
+            m.set_folder(kind, Path(folder))
+            try:
+                save_settings(m.source, m.dest)
+            except Exception as e:
+                return self._res(f"could not save settings: {e}")
+            return self._res()
 
     def scan(self) -> dict:
-        return self._res(self._guard(editing=True) or self.model.scan())
+        with self._lock:
+            return self._res(self._guard(editing=True) or self.model.scan())
 
     def edit(self, i, field, value) -> dict:
-        if err := self._guard() or self._index(i):
-            return self._res(err)
-        if field not in FIELDS or not isinstance(value, str):
-            return self._res("invalid field or value")
-        if len(value) > MAX_VALUE:
-            return self._res(f"value too long (max {MAX_VALUE} characters)")
-        return self._res(self.model.edit(i, field, value))
+        with self._lock:
+            if err := self._guard() or self._index(i):
+                return self._res(err)
+            if field not in FIELDS or not isinstance(value, str):
+                return self._res("invalid field or value")
+            if len(value) > MAX_VALUE:
+                return self._res(f"value too long (max {MAX_VALUE} characters)")
+            return self._res(self.model.edit(i, field, value))
 
     def toggle(self, i) -> dict:
-        if err := self._guard() or self._index(i):
-            return self._res(err)
-        return self._res(self.model.toggle(i))
+        with self._lock:
+            if err := self._guard() or self._index(i):
+                return self._res(err)
+            return self._res(self.model.toggle(i))
 
     def reset(self, i) -> dict:
-        if err := self._guard(editing=True) or self._index(i):
-            return self._res(err)
-        return self._res(self.model.reset(i))
+        with self._lock:
+            if err := self._guard(editing=True) or self._index(i):
+                return self._res(err)
+            return self._res(self.model.reset(i))
 
     def move(self) -> dict:
-        if err := self._guard(editing=True):
-            return self._res(err)
-        self._moving = True
-        names = [r.filename() or "" for r in self.model.rows if r.selected]
-        threading.Thread(target=self._run_move, args=(names,), daemon=True).start()
-        return self._res()
+        with self._lock:
+            if err := self._guard(editing=True):
+                return self._res(err)
+            self._moving = True
+            names = [r.filename() or "" for r in self.model.rows if r.selected]
+            threading.Thread(target=self._run_move, args=(names,), daemon=True).start()
+            return self._res()
 
     def _run_move(self, names: list[str]) -> None:
         data: dict = {"results": [], "summary": "", "error": None}
@@ -124,5 +132,24 @@ class Api:
             data["error"] = str(e) or type(e).__name__
         finally:
             self._moving = False
-        data["state"] = self._state()
-        self._push("done", data)
+            try:
+                data["state"] = self._state()
+            except Exception as e:
+                data["state"], data["error"] = None, data["error"] or str(e)
+            self._push("done", data)
+
+
+_NAMES = ("state", "choose", "pending_edits", "scan", "edit", "toggle", "reset", "move",
+          "can_close", "set_editing")
+
+
+def js_api(impl: ApiImpl) -> object:
+    """Facade for pywebview: no instance attributes, nothing reachable but the call closures."""
+    def make(name):
+        f = getattr(impl, name)
+
+        def call(*a, **k):
+            return f(*a, **k)
+        call.__name__ = name
+        return staticmethod(call)
+    return type("Api", (), {"__slots__": (), **{n: make(n) for n in _NAMES}})()
