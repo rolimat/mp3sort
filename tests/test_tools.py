@@ -137,6 +137,8 @@ def test_source_offer_lists_tag_and_versions(tmp_path):
     v = metadata.version("mutagen")
     assert f"mutagen {v}: https://pypi.org/project/mutagen/{v}/#files" in t
     assert "The complete corresponding source code is available at the URLs above." in t
+    assert ("The licence texts are in the licenses folder of the dmg and inside mp3sort.app "
+            "(Contents/Resources/licenses).") in t
     collect_licenses(tmp_path / "dev")
     assert "/tree/main" in (tmp_path / "dev" / "SOURCE.txt").read_text()
 
@@ -152,6 +154,7 @@ def test_check_bundle_fails_on_unknown_native(tmp_path):
     (fw / "python3__dot__14/lib-dynload/_ssl.cpython-314-darwin.so").write_bytes(b"\xcf\xfa\xed\xfe")
     (fw / "libssl.3.dylib").write_bytes(b"\xcf\xfa\xed\xfe")
     (fw / "Python.framework").mkdir()
+    (fw / "libpython3.14.dylib").write_bytes(b"\xcf\xfa\xed\xfe")
     (c / "Resources/libssl.3.dylib").symlink_to(fw / "libssl.3.dylib")
     (fw / "data.bin").write_bytes(b"nope")
     assert unknown_native(tmp_path / "x.app") == []
@@ -292,3 +295,17 @@ def test_build_script_rules():
     assert 'if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"' in sh
     spec = (root / "mp3sort.spec").read_text()
     assert 'os.environ["MP3SORT_MINOS"]' in spec and '"13.0"' not in spec
+
+
+def test_override_dot_files_are_not_copied(tmp_path, monkeypatch):
+    import shutil
+    import tools.collect_licenses as cl
+
+    ov = tmp_path / "ov"
+    shutil.copytree(cl.OVERRIDES, ov)
+    (ov / "zstd" / ".DS_Store").write_bytes(b"\0\x01binary")
+    (ov / "zstd" / ".git").mkdir()
+    (ov / "zstd" / ".git" / "x").write_text("x")
+    monkeypatch.setattr(cl, "OVERRIDES", ov)
+    cl.collect_licenses(tmp_path / "out")
+    assert sorted(p.name for p in (tmp_path / "out/third-party/zstd").iterdir()) == ["LICENSE"]

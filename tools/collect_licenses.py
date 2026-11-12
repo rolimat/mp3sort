@@ -20,7 +20,7 @@ RUNTIME = ("pywebview", "mutagen")  # walked with their runtime requirements
 BOOTLOADER = "pyinstaller"  # its bootloader ships in the app; its own requirements do not
 # native libraries the bundled Python ships: file name stem -> licence dir in assets/licenses
 NATIVE = {"libssl": "openssl", "libcrypto": "openssl", "libmpdec": "mpdecimal",
-          "libzstd": "zstd", "liblzma": "xz", "Python": "python"}
+          "libzstd": "zstd", "liblzma": "xz", "Python": "python", "libpython3": "python"}
 MACHO = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"}
 
 
@@ -73,7 +73,8 @@ def _source_text(version: str, dists: dict) -> str:
     v = sys.version.split()[0]
     lines += [f"  Python {v}: https://www.python.org/downloads/release/python-{v.replace('.', '')}/", "",
               "The complete corresponding source code is available at the URLs above.",
-              "Licence texts are in the third-party/ folder next to this file.", ""]
+              "The licence texts are in the licenses folder of the dmg and inside mp3sort.app "
+              "(Contents/Resources/licenses).", ""]
     return "\n".join(lines)
 
 
@@ -90,7 +91,7 @@ def collect_licenses(out: Path, version: str = "0.0.0") -> list[Path]:
 
     def put_dir(src: Path, name: str):
         for f in sorted(src.rglob("*")):
-            if f.is_file():
+            if f.is_file() and not any(part.startswith(".") for part in f.relative_to(src).parts):
                 put(f, out / "third-party" / name / f.relative_to(src))
 
     dists = _bundled()
