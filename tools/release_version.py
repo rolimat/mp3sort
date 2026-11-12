@@ -4,7 +4,7 @@ import sys
 
 
 def version_from_tag(tag: str) -> str:
-    m = re.fullmatch(r"v(\d+\.\d+\.\d+)", tag)
+    m = re.fullmatch(r"v([0-9]+\.[0-9]+\.[0-9]+)", tag)
     if not m:
         raise ValueError(f"invalid tag: {tag}")
     return m.group(1)

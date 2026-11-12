@@ -178,7 +178,7 @@ def test_version_from_tag():
 
     assert version_from_tag("v1.0.0") == "1.0.0"
     assert version_from_tag("v12.3.45") == "12.3.45"
-    for bad in ("v1.0", "1.0.0", "v1.0.0-rc1", ""):
+    for bad in ("v1.0", "1.0.0", "v1.0.0-rc1", "", "v\u0661.\u0662.\u0663"):
         with pytest.raises(ValueError):
             version_from_tag(bad)
     script = Path(__file__).resolve().parent.parent / "tools" / "release_version.py"
