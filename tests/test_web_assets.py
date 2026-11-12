@@ -47,3 +47,10 @@ def test_launcher_source_rules():
 
 def test_gui_imports_without_window():
     assert callable(gui.main)
+
+
+def test_back_to_tracks_does_not_rescan():
+    m = re.search(r'"Back to tracks"[\s\S]*?\n\s*\}\n', JS)
+    assert m, "Back to tracks control missing"
+    block = JS[m.start():m.start() + 400]
+    assert "scan" not in block.split("addEventListener", 1)[1].split("\n")[0]
