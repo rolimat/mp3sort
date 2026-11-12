@@ -43,37 +43,51 @@ class Model:
         self.rows: list[Row] = []
         self.busy = False
         self._existing: set[str] = set()  # name_keys present in dest at scan time
+        self._scanned: tuple | None = None  # (source, dest) the rows were scanned from
+        self._g: dict[str, list[int]] | None = None  # cached _groups(), reset on scan/edit/reset
 
     def can_scan(self) -> bool:
         return bool(self.source and self.dest and not self.busy)
 
     def scan(self) -> str | None:
-        self.rows, self._existing = [], set()
+        if self.busy:
+            return "busy"
+        self.rows, self._existing, self._scanned, self._g = [], set(), None, None
         err = check_folders(self.source, self.dest)
         if err is None:
             self.rows = [row_from_item(it) for it in scan(self.source, self.dest)]
             self._existing = {name_key(p.name) for p in self.dest.iterdir()}
+            self._scanned = (self.source, self.dest)
         return err
 
     def edit(self, i: int, field: str, value: str) -> str | None:
+        if self.busy:
+            return "busy"
+        self._g = None
         return self.rows[i].edit(field, value)
 
     def toggle(self, i: int) -> str | None:
+        if self.busy:
+            return "busy"
         r = self.rows[i]
         if not r.selected and r.filename() is None:
             return "cannot include (no proposed name)"
         r.selected = not r.selected
         return None
 
-    def reset(self, i: int) -> None:
+    def reset(self, i: int) -> str | None:
+        if self.busy:
+            return "busy"
+        self._g = None
         self.rows[i].reset()
 
     def _groups(self) -> dict[str, list[int]]:
-        g: dict[str, list[int]] = {}
-        for n, r in enumerate(self.rows, 1):
-            if (fn := r.filename()):
-                g.setdefault(name_key(fn), []).append(n)
-        return g
+        if self._g is None:
+            self._g = {}
+            for n, r in enumerate(self.rows, 1):
+                if (fn := r.filename()):
+                    self._g.setdefault(name_key(fn), []).append(n)
+        return self._g
 
     def flags(self, i: int) -> list[str]:
         r = self.rows[i]
@@ -85,7 +99,8 @@ class Model:
                 extra.append("duplicate of " + ", ".join(others))
             if key in self._existing:
                 extra.append("already exists in destination")
-        return r.flags(extra)
+        fl = r.flags(extra)
+        return fl if r.filename() or "no artist or title" in fl else fl + ["no artist or title"]
 
     def low_kbps(self, i: int) -> bool:
         r = self.rows[i]
@@ -123,17 +138,19 @@ class Model:
         err = check_folders(self.source, self.dest)  # folders may have changed since the scan
         if err:
             return err
-        sel = [r for r in self.rows if r.selected]  # snapshot
+        if self._scanned != (self.source, self.dest):
+            return "folders changed since scan, scan again"
+        # true snapshot: later edits cannot change what is written
+        sel = [(r, r.filename(), {f: v for f, v in r.values.items() if v != r.suggested[f]})
+               for r in self.rows if r.selected]
         out = []
         self.busy = True
         try:
-            for i, r in enumerate(sel, 1):
+            for i, (r, fn, tags) in enumerate(sel, 1):
                 progress(i, len(sel))
-                fn = r.filename()
                 if fn is None:
                     out.append((r, "no proposed name"))
                     continue
-                tags = {f: v for f, v in r.values.items() if v != r.suggested[f]}
                 try:
                     err = apply_item(r.item, self.dest, tags, fn)
                 except Exception as e:

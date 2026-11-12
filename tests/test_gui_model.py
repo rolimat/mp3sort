@@ -14,9 +14,8 @@ from sorter.rows import row_from_item
 from sorter.scan import Item, name_key
 
 
-
 def item(tmp_path, name="a.mp3", flags=(), fn="A - B.mp3", sel=True):
-    return Item(tmp_path / name, Proposal("A", "B", list(flags)) if fn else Proposal(None, None, list(flags)), sel)
+    return Item(tmp_path / name, Proposal("A", "B", list(flags)) if fn else Proposal("", "", list(flags)), sel)
 
 
 def test_settings(tmp_path):
@@ -46,6 +45,7 @@ def test_can_scan_and_scan_error(tmp_path):
 
 def rows(m, *its):
     m.rows = [row_from_item(i) for i in its]
+    m._scanned = (m.source, m.dest)  # as if scanned
 
 
 def test_toggle_counts(tmp_path):
@@ -53,7 +53,8 @@ def test_toggle_counts(tmp_path):
     rows(m, item(tmp_path), item(tmp_path, flags=["x"], sel=False), item(tmp_path, fn=None, sel=False))
     assert m.toggle(2) == "cannot include (no proposed name)"
     assert m.toggle(1) is None and m.rows[1].selected
-    assert m.counts() == {"tracks": 3, "ok": 1, "warn": 2,  # rows 1 and 2 share a name
+    assert m.flags(2) == ["no artist or title"]
+    assert m.counts() == {"tracks": 3, "ok": 0, "warn": 3,  # rows 1 and 2 share a name
                            "edited": 0, "selected": 2}
     assert m.toggle(0) is None and not m.rows[0].selected
 
@@ -183,3 +184,81 @@ def test_move_rechecks_folders(tmp_path, sub):
     m.dest.mkdir(exist_ok=True)
     assert m.move() == "Error: the destination cannot be inside the source (or vice versa)"
     assert f.read_bytes() == b"x" and not list((s / "inner").glob("*") if sub else [])
+
+
+def test_counts_fast_on_many_rows(tmp_path):
+    import time
+    m = Model()
+    rows(m, *[Item(tmp_path / f"{n}.mp3", Proposal(f"A{n}", "T", []), True) for n in range(2000)])
+    m.rows[1].values["artist"] = m.rows[0].values["artist"]
+    t = time.perf_counter()
+    c = m.counts()
+    assert time.perf_counter() - t < 0.5
+    assert c["tracks"] == 2000 and c["warn"] == 2 and m.flags(0) == ["duplicate of 2"]
+
+
+def test_busy_blocks_mutators(tmp_path):
+    m = Model(tmp_path, tmp_path / "d")
+    rows(m, item(tmp_path))
+    m.busy = True
+    assert m.edit(0, "title", "X") == "busy" and m.toggle(0) == "busy"
+    assert m.reset(0) == "busy" and m.scan() == "busy"
+    assert m.rows[0].values["title"] == "B" and m.rows[0].selected
+
+
+def test_move_snapshot_ignores_edits_during_move(tmp_path):
+    s, d = tmp_path / "s", tmp_path / "d"
+    s.mkdir(); d.mkdir()
+    m = Model(s, d)
+    rows(m, item(tmp_path, "a.mp3"), item(tmp_path, "b.mp3"))
+    m.rows[1].values["title"] = "Edited"
+    seen = []
+    import sorter.gui_model as g
+    orig, g.apply_item = g.apply_item, lambda it, dest, tags=None, filename=None: seen.append((tags, filename))
+    try:
+        def progress(i, n):
+            m.rows[1].values["title"] = "Changed"  # bypasses the busy guard on purpose
+            m.rows[1].selected = False
+        m.move(progress)
+    finally:
+        g.apply_item = orig
+    assert seen[1] == ({"title": "Edited"}, "A - Edited.mp3")
+
+
+def test_move_refused_when_folders_changed_since_scan(tmp_path):
+    a, b, c = (tmp_path / n for n in "abc")
+    for p in (a, b, c):
+        p.mkdir()
+    (a / "x.mp3").write_bytes(b"x")
+    m = Model(a, b)
+    m.scan()
+    m.dest = c
+    assert m.move() == "folders changed since scan, scan again"
+    assert (a / "x.mp3").exists()
+
+
+def test_edit_collisions(tmp_path):
+    s, d = tmp_path / "s", tmp_path / "d"
+    s.mkdir(); d.mkdir()
+    (d / "Z - Q.mp3").write_bytes(b"old")
+    m = Model(s, d)
+    m._existing = {name_key("Z - Q.mp3")}
+    rows(m, item(tmp_path, "a.mp3"), item(tmp_path, "b.mp3"), item(tmp_path, "c.mp3"))
+    m.edit(0, "artist", "N"); m.edit(1, "artist", "N")
+    assert m.flags(0) == ["duplicate of 2"] and m.flags(1) == ["duplicate of 1"]
+    m.edit(2, "artist", "Z"); m.edit(2, "title", "Q")
+    assert m.flags(2) == ["already exists in destination"]
+
+
+def test_move_same_final_name_second_refused(tmp_path):
+    s, d = tmp_path / "s", tmp_path / "d"
+    s.mkdir(); d.mkdir()
+    for n in "ab":
+        shutil.copy(audio_path(), s / f"{n}.mp3")
+    m = Model(s, d)
+    rows(m, Item(s / "a.mp3", Proposal("A", "B", []), True), Item(s / "b.mp3", Proposal("C", "D", []), True))
+    m.edit(1, "artist", "A"); m.edit(1, "title", "B")
+    res = m.move()
+    assert res[0][1] is None and res[1][1] == "already exists in destination, not overwritten"
+    assert (s / "b.mp3").exists() and not (s / "a.mp3").exists()
+    assert [p.name for p in d.iterdir()] == ["A - B.mp3"]
