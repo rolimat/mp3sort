@@ -1,0 +1,7 @@
+Upstream licence texts committed here (copied into the app's licenses/third-party/):
+openssl/LICENSE.txt          https://github.com/openssl/openssl/blob/master/LICENSE.txt (Apache-2.0)
+mpdecimal/COPYRIGHT.txt      mpdecimal-4.0.1.tar.gz from https://www.bytereef.org/mpdecimal/ (BSD-2-Clause)
+zstd/LICENSE                 https://github.com/facebook/zstd/blob/dev/LICENSE (BSD-3-Clause)
+xz/COPYING.0BSD              https://github.com/tukaani-project/xz/blob/master/COPYING.0BSD (0BSD)
+proxy_tools/LICENSE.txt      https://github.com/pallets/werkzeug/blob/main/LICENSE.txt (BSD-3-Clause)
+pyobjc/License.txt           https://github.com/ronaldoussoren/pyobjc/blob/main/pyobjc-core/License.txt (MIT)

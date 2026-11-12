@@ -1,0 +1,8 @@
+proxy_tools ships no licence file. Its source (proxy_tools/__init__.py) says:
+
+    Proxy. Extracted from Werkzeug
+    :copyright: (c) 2013 by Armin Ronacher (adapted 2014).
+    :license: BSD, see LICENSE for more details.
+
+LICENSE.txt is the BSD-3-Clause licence of Werkzeug, the project the code was extracted from
+(https://github.com/pallets/werkzeug/blob/main/LICENSE.txt).
