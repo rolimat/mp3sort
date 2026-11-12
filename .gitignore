@@ -5,3 +5,4 @@ __pycache__/
 .superpowers/
 tests/fixtures/audio/
 docs/
+tests/fixtures/local/
