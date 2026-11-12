@@ -4,11 +4,11 @@ from pathlib import Path
 
 from mutagen import apev2
 from mutagen.id3 import ID3
-from mutagen.mp3 import MP3
 
 from sorter.apply import COPIED_NOT_DELETED, apply_item
 from sorter.folders import check_folders
-from sorter.scan import Item, scan
+from sorter.rows import Row, row_from_item
+from sorter.scan import name_key, scan
 
 SETTINGS_PATH = Path.home() / "Library" / "Application Support" / "mp3sort" / "settings.json"
 
@@ -33,79 +33,140 @@ def save_settings(source: Path | None, dest: Path | None, path: Path | None = No
     os.replace(tmp, path)
 
 
-def _old(tags, key: str) -> str:
-    v = [str(t) for fr in (tags.getall(key) if tags else []) for t in fr.text]
-    return f"{', '.join(v)} → (empty)" if v else "(empty)"
+def _old_values(tags, key: str) -> list[str]:
+    return [str(t) for fr in (tags.getall(key) if tags else []) for t in fr.text]
 
 
 class Model:
     def __init__(self, source: Path | None = None, dest: Path | None = None):
         self.source, self.dest = source, dest
-        self.items: list[Item] = []
+        self.rows: list[Row] = []
         self.busy = False
+        self._existing: set[str] = set()  # name_keys present in dest at scan time
+        self._scanned: tuple | None = None  # (source, dest) the rows were scanned from
+        self._g: dict[str, list[int]] | None = None  # cached _groups(), reset on scan/edit/reset
 
-    def can_scan(self) -> bool:
-        return bool(self.source and self.dest and not self.busy)
+    def set_folder(self, kind: str, path: Path) -> None:
+        if kind == "source":
+            self.source = path
+        else:
+            self.dest = path
+        self.rows, self._existing, self._scanned, self._g = [], set(), None, None  # scan required again
 
     def scan(self) -> str | None:
-        self.items = []
+        if self.busy:
+            return "busy"
+        self.rows, self._existing, self._scanned, self._g = [], set(), None, None
         err = check_folders(self.source, self.dest)
         if err is None:
-            self.items = scan(self.source, self.dest)
+            self.rows = [row_from_item(it) for it in scan(self.source, self.dest)]
+            self._existing = {name_key(p.name) for p in self.dest.iterdir()}
+            self._scanned = (self.source, self.dest)
         return err
 
+    def after_move(self, results) -> None:
+        """Drop rows that left the source, keep the rest (with their edits) and refresh the destination listing."""
+        gone = {id(r) for r, e in results if e is None or e.startswith(COPIED_NOT_DELETED)}
+        self.rows = [r for r in self.rows if id(r) not in gone]
+        self._existing = {name_key(p.name) for p in self.dest.iterdir()}
+        self._g = None
+
+    def edit(self, i: int, field: str, value: str) -> str | None:
+        if self.busy:
+            return "busy"
+        self._g = None
+        return self.rows[i].edit(field, value)
+
     def toggle(self, i: int) -> str | None:
-        it = self.items[i]
-        if not it.selected and it.proposal.filename is None:
+        if self.busy:
+            return "busy"
+        r = self.rows[i]
+        if not r.selected and r.filename() is None:
             return "cannot include (no proposed name)"
-        it.selected = not it.selected
+        r.selected = not r.selected
         return None
 
-    def footer(self) -> str:
-        warn = sum(1 for it in self.items if it.proposal.flags)
-        sel = sum(1 for it in self.items if it.selected)
-        return f"{len(self.items) - warn} ok · {warn} ⚠ · {sel} selected"
+    def reset(self, i: int) -> str | None:
+        if self.busy:
+            return "busy"
+        self._g = None
+        self.rows[i].reset()
 
-    def detail(self, i: int) -> list[tuple[str, str]]:
-        it = self.items[i]
-        p = it.proposal
+    def _groups(self) -> dict[str, list[int]]:
+        if self._g is None:
+            self._g = {}
+            for n, r in enumerate(self.rows, 1):
+                if (fn := r.filename()):
+                    self._g.setdefault(name_key(fn), []).append(n)
+        return self._g
+
+    def flags(self, i: int) -> list[str]:
+        r = self.rows[i]
+        extra = []
+        if fn := r.filename():
+            key = name_key(fn)
+            others = [str(n) for n in self._groups()[key] if n != i + 1]
+            if others:
+                extra.append("duplicate of " + ", ".join(others))
+            if key in self._existing:
+                extra.append("already exists in destination")
+        fl = r.flags(extra)
+        return fl if r.filename() or "no artist or title" in fl else fl + ["no artist or title"]
+
+    def low_kbps(self, i: int) -> bool:
+        r = self.rows[i]
+        if r.kbps is None or not (fn := r.filename()):
+            return False
+        group = [self.rows[n - 1].kbps or 0 for n in self._groups()[name_key(fn)]]
+        return len(group) > 1 and r.kbps < max(group)
+
+    def edited_count(self) -> int:
+        return sum(r.edited() for r in self.rows)
+
+    def counts(self) -> dict:
+        warn = sum(1 for i in range(len(self.rows)) if self.flags(i))
+        return {"tracks": len(self.rows), "ok": len(self.rows) - warn, "warn": warn,
+                "edited": self.edited_count(), "selected": sum(r.selected for r in self.rows)}
+
+    def strip(self, i: int) -> dict:
+        r = self.rows[i]
         try:
-            tags = ID3(it.src)
+            tags = ID3(r.item.src)
         except Exception:
             tags = None
+        removed = []
         try:
-            apev2.APEv2(it.src)
-            ape = "present → removed"
+            apev2.APEv2(r.item.src)
+            removed.append("APE tag")
         except Exception:
-            ape = "none"
-        try:
-            secs = int(MP3(it.src).info.length)
-            dur = f"{secs // 60}:{secs % 60:02d}"
-        except Exception:
-            dur = "?"
-        rate = "? kbps" if it.bitrate is None else f"{it.bitrate} kbps" + (" VBR" if it.vbr else "")
-        return [("Original file", it.src.name), ("Folder", str(it.src.parent)),
-                ("Artist", p.artist or ""), ("Title", p.title or ""),
-                ("Album", _old(tags, "TALB")), ("Genre", _old(tags, "TCON")),
-                ("Comment", _old(tags, "COMM")), ("APE tag", ape),
-                ("Quality", f"{rate} · {dur}"),
-                ("Warning", "⚠ " + "; ".join(p.flags) if p.flags else "—")]
+            pass
+        for label, key in (("Album", "TALB"), ("Genre", "TCON"), ("Comment", "COMM")):
+            removed += [f"{label}: {v}" for v in _old_values(tags, key)]
+        return {"filename": r.filename(), "album": r.values["album"], "label": r.values["label"],
+                "comment": r.values["comment"], "from": r.item.src.name, "removed": removed}
 
-    def move(self, progress=lambda i, n: None) -> list[tuple[Item, str | None]] | str:
+    def move(self, progress=lambda i, n: None) -> list[tuple[Row, str | None]] | str:
         err = check_folders(self.source, self.dest)  # folders may have changed since the scan
         if err:
             return err
-        sel = [it for it in self.items if it.selected]
+        if self._scanned != (self.source, self.dest):
+            return "folders changed since scan, scan again"
+        # true snapshot: later edits cannot change what is written
+        sel = [(r, r.filename(), {f: v for f, v in r.values.items() if v != r.suggested[f]})
+               for r in self.rows if r.selected]
         out = []
         self.busy = True
         try:
-            for i, it in enumerate(sel, 1):
+            for i, (r, fn, tags) in enumerate(sel, 1):
                 progress(i, len(sel))
+                if fn is None:
+                    out.append((r, "no proposed name"))
+                    continue
                 try:
-                    err = apply_item(it, self.dest)
+                    err = apply_item(r.item, self.dest, tags, fn)
                 except Exception as e:
                     err = str(e) or type(e).__name__
-                out.append((it, err))
+                out.append((r, err))
         finally:
             self.busy = False
         return out
@@ -113,6 +174,6 @@ class Model:
     def summary(self, results) -> str:
         moved = sum(1 for _, e in results if e is None)
         kept = sum(1 for _, e in results if e and e.startswith(COPIED_NOT_DELETED))
-        left = len(self.items) - moved - kept
+        left = len(self.rows) - moved - kept
         extra = f" · Copied without deleting original: {kept}" if kept else ""
         return f"Moved: {moved} · Left in source: {left}{extra}"

@@ -1,2 +1,3 @@
 mutagen==1.48.1
 pytest==9.2.0
+pywebview==6.2.1
