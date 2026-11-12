@@ -1,0 +1,58 @@
+name: release
+on:
+  push:
+    tags: ["v*.*.*"]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -r requirements.txt -r requirements-build.txt
+      - run: pytest -q
+      - id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            v=$(python tools/release_version.py "$GITHUB_REF_NAME")
+          else
+            v=0.0.0
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: bash tools/build_app.sh "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dmg
+          path: dist
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          notes="Open the dmg and drag mp3sort to Applications.
+
+          The first open is blocked because the app is not notarized: go to System Settings > Privacy & Security and click \"Open Anyway\".
+
+          Apple Silicon only. Licensed GPL-3.0-or-later. Source: https://github.com/rolimat/mp3sort"
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg --repo "$GITHUB_REPOSITORY" --title "mp3sort $VERSION" --notes "$notes"

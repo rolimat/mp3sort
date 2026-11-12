@@ -17,6 +17,22 @@ python3 -m venv .venv
 
 The terminal version runs on any Python 3.14; the GUI is macOS only. `requirements.txt` also installs `pywebview` and the macOS libraries it needs, so the GUI runs from the same venv as the terminal version; no extra system packages are required.
 
+## Install the app
+
+Download `mp3sort-X.Y.Z.dmg` from the [Releases](../../releases) page, open it and drag `mp3sort` to Applications. Apple Silicon only.
+
+The app is not notarized, so the first open is blocked: go to System Settings > Privacy & Security and click "Open Anyway". If that does not work, run `xattr -dr com.apple.quarantine /Applications/mp3sort.app`.
+
+macOS may ask for access to folders (Downloads, Documents, external drives), and again after each update.
+
+## Releasing
+
+```sh
+git tag vX.Y.Z && git push origin vX.Y.Z   # CI builds the dmg and publishes the release
+bash tools/build_app.sh 0.0.0              # local build, writes dist/mp3sort-0.0.0.dmg
+bash tools/make_icon.sh                    # regenerate the app icon
+```
+
 ## Terminal usage
 
 ```sh

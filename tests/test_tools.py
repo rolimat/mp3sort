@@ -70,3 +70,20 @@ def test_version_from_tag():
     assert r.returncode == 2 and "invalid tag: v1.0" in r.stderr
     r = subprocess.run([sys.executable, str(script), "v1.2.3"], capture_output=True, text=True)
     assert r.stdout.strip() == "1.2.3"
+
+
+def test_release_workflow():
+    import re
+
+    wf = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
+    assert wf.exists()
+    t = wf.read_text(encoding="utf-8")
+    for needle in ('tags: ["v*.*.*"]', "pull_request:", "macos-latest", 'python-version: "3.14"',
+                   "pytest -q", "tools/build_app.sh", "gh release create"):
+        assert needle in t, needle
+    assert "--clobber" not in t and "--draft" not in t
+    assert set(re.findall(r"secrets\.\w+", t)) == {"secrets.GITHUB_TOKEN"}
+    assert t.count("contents: write") == 1
+    assert re.search(r"^permissions:\n  contents: read$", t, re.M)
+    # event data must not be interpolated into scripts
+    assert "${{ github.ref_name }}" not in t
