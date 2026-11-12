@@ -1,4 +1,6 @@
+import errno
 import os
+import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,22 +26,42 @@ class ScanError(Exception):
 
 def cannot_read(folder: Path, e: OSError) -> ScanError:
     if isinstance(e, PermissionError):
-        return ScanError(f"cannot read {folder}: permission denied — allow access in "
-                         "System Settings > Privacy & Security")
+        hint = ""
+        if sys.platform == "darwin" and e.errno == errno.EPERM:  # macOS privacy (TCC) denial
+            hint = " — allow access in System Settings > Privacy & Security"
+        return ScanError(f"cannot read {folder}: permission denied{hint}")
     return ScanError(f"cannot read {folder}: {e.strerror or e}")
+
+
+def _entries(d) -> list:
+    """Directory entries; needs list AND search permission (a 0644 folder lists names but cannot be read)."""
+    if not os.access(d, os.R_OK | os.X_OK):
+        raise PermissionError(errno.EACCES, "Permission denied", str(d))
+    with os.scandir(d) as it:
+        return list(it)
 
 
 def mp3_files(source: Path) -> tuple[list[Path], int]:
     """Sorted mp3 files under source and the number of sub-folders that could not be read.
+    Hidden files and folders (.Trashes, .Spotlight-V100, ...) are ignored.
     Raises ScanError when source itself cannot be read (rglob would silently return nothing)."""
     try:
-        os.scandir(source).close()
+        todo = [_entries(source)]
     except OSError as e:
         raise cannot_read(source, e) from e
-    errors: list[OSError] = []
-    files = [Path(d, n) for d, _, names in os.walk(source, onerror=errors.append) for n in names
-             if n.lower().endswith(".mp3") and not n.startswith(".") and Path(d, n).is_file()]
-    return sorted(files), len(errors)
+    files, skipped = [], 0
+    while todo:
+        for e in todo.pop():
+            if e.name.startswith("."):
+                continue
+            if e.is_dir(follow_symlinks=False):
+                try:
+                    todo.append(_entries(e.path))
+                except OSError:
+                    skipped += 1
+            elif e.name.lower().endswith(".mp3") and e.is_file():
+                files.append(Path(e.path))
+    return sorted(files), skipped
 
 
 def name_key(name: str) -> str:
