@@ -272,3 +272,34 @@ def test_launcher_main_wiring(monkeypatch, tmp_path):
     assert len(cap["names"]) == 11 and cap["started"]
     (closing,) = win.events.closing
     assert closing() is True
+
+
+@pytest.fixture
+def locked_dir():
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    done = []
+    yield lambda p: (p.chmod(0), done.append(p))
+    for p in done:
+        p.chmod(0o755)
+
+
+@pytest.mark.parametrize("which", ["src", "dst"])
+def test_scan_unreadable_folder_reports_error(env, locked_dir, which):
+    folder = getattr(env, which)
+    locked_dir(folder)
+    r = env.scan()
+    assert not r["ok"] and r["state"]["rows"] == []
+    assert f"cannot read {folder}: permission denied" in r["error"]
+    assert "Privacy & Security" in r["error"]
+
+
+def test_scan_unreadable_subfolder_is_counted(env, locked_dir):
+    sub = env.src / "sub"
+    sub.mkdir()
+    shutil.copy(audio_path(), sub / "Ana - Bruma.mp3")
+    locked_dir(sub)
+    r = env.scan()
+    assert r["state"]["counts"]["tracks"] == 2
+    assert not r["ok"] and "1 sub-folder could not be read" in r["error"]

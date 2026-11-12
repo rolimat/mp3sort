@@ -54,3 +54,9 @@ def test_back_to_tracks_does_not_rescan():
     assert m, "Back to tracks control missing"
     block = JS[m.start():m.start() + 400]
     assert "scan" not in block.split("addEventListener", 1)[1].split("\n")[0]
+
+
+def test_api_rejections_are_turned_into_errors():
+    # a rejected pywebview promise must reach the page as {ok: false, error}, never hang the queue
+    assert re.search(r"const q = \(fn\) => \(queue = queue\.then\(fn\)\.catch\(fail\)\);", JS)
+    assert "typeof n !== \"number\"" in JS

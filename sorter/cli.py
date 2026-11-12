@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sorter.apply import COPIED_NOT_DELETED, apply_item
 from sorter.folders import check_folders
-from sorter.scan import Item, scan
+from sorter.scan import Item, ScanError, scan
 
 HELP = "Numbers to EXCLUDE/INCLUDE (e.g. 3,5), Enter = apply, q = quit"
 
@@ -56,7 +56,14 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
     if err:
         print(err)
         return 2
-    items = scan(source, dest)
+    skipped: list[int] = []
+    try:
+        items = scan(source, dest, skipped)
+    except ScanError as e:
+        print(f"Error: {e}")
+        return 2
+    if skipped[0]:
+        print(f"Warning: {skipped[0]} unreadable sub-folder(s) skipped")
     if not items:
         print("No mp3 files in source")
         return 0

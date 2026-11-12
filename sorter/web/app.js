@@ -22,8 +22,10 @@ function h(tag, cls, ...kids) {
 const txt = (cls, s, tag = "span") => h(tag, cls, String(s));
 
 // API calls are serialised: pywebview runs each call on its own thread, order matters for set_editing.
+// A rejected call (Python exception) becomes a normal error result, so no caller ever hangs.
 let queue = Promise.resolve();
-const q = (fn) => (queue = queue.then(fn, fn));
+const fail = (e) => ({ ok: false, error: "Error: " + ((e && e.message) || String(e)) });
+const q = (fn) => (queue = queue.then(fn).catch(fail));
 const A = {
   state: () => q(() => pywebview.api.state()),
   choose: (k) => q(() => pywebview.api.choose(k)),
@@ -73,6 +75,7 @@ function confirmDlg(title, body, okLabel) {
 // ---- top bar -------------------------------------------------------------
 async function discardOk() {
   const n = await A.pending_edits();
+  if (typeof n !== "number") { apply(n); render(); return false; }
   return !n || confirmDlg(`Discard ${n} edited track${n > 1 ? "s" : ""}?`, "Your tag edits are lost when the folders are scanned again.", "Discard");
 }
 
@@ -227,6 +230,7 @@ function renderFoot() {
 }
 
 function render() {
+  if (!S) return $("main").replaceChildren(txt("empty r", note || "Starting…"));   // first state() failed
   renderBar(); renderMain(); renderStrip(); renderFoot();
 }
 

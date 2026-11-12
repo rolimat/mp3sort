@@ -8,7 +8,7 @@ from mutagen.id3 import ID3
 from sorter.apply import COPIED_NOT_DELETED, apply_item
 from sorter.folders import check_folders
 from sorter.rows import Row, row_from_item
-from sorter.scan import name_key, scan
+from sorter.scan import ScanError, cannot_read, name_key, scan
 
 SETTINGS_PATH = Path.home() / "Library" / "Application Support" / "mp3sort" / "settings.json"
 
@@ -58,11 +58,21 @@ class Model:
             return "busy"
         self.rows, self._existing, self._scanned, self._g = [], set(), None, None
         err = check_folders(self.source, self.dest)
-        if err is None:
-            self.rows = [row_from_item(it) for it in scan(self.source, self.dest)]
-            self._existing = {name_key(p.name) for p in self.dest.iterdir()}
-            self._scanned = (self.source, self.dest)
-        return err
+        if err is not None:
+            return err
+        skipped: list[int] = []
+        try:
+            rows = [row_from_item(it) for it in scan(self.source, self.dest, skipped)]
+            try:
+                existing = {name_key(p.name) for p in self.dest.iterdir()}
+            except OSError as e:
+                raise cannot_read(self.dest, e) from e
+        except ScanError as e:
+            return str(e)
+        self.rows, self._existing, self._scanned = rows, existing, (self.source, self.dest)
+        if n := skipped[0]:
+            return f"{n} sub-folder{'s' if n > 1 else ''} could not be read (permission denied?) and {'were' if n > 1 else 'was'} skipped"
+        return None
 
     def after_move(self, results) -> str | None:
         """Drop rows that left the source, keep the rest (with their edits) and refresh the destination listing.
