@@ -10,9 +10,13 @@ from sorter.gui_model import Model, load_settings
 WEB = Path(__file__).parent / "web"
 
 
+# what pywebview 6.2.1's util.load_js_files() reads from its js dir (polyfill only on mshtml)
+WEBVIEW_JS = ("api.js", "customize.js", "finish.js", "state.js", "lib/dom_json.js", "lib/polyfill.js")
+
+
 def _webview_js() -> Path:
-    import webview
-    return Path(webview.__file__).parent / "js"  # pywebview injects these into the page
+    from webview.util import get_js_dir
+    return Path(get_js_dir())  # the same lookup pywebview uses when it injects the files
 
 
 def self_check() -> int:
@@ -22,8 +26,9 @@ def self_check() -> int:
             if not (WEB / name).is_file():
                 raise FileNotFoundError(f"missing web asset: {WEB / name}")
         js = _webview_js()
-        if not any(js.glob("*.js")):
-            raise FileNotFoundError(f"missing pywebview js files in {js}")
+        missing = [f for f in WEBVIEW_JS if not (js / f).is_file()]
+        if missing:
+            raise FileNotFoundError(f"missing pywebview js files in {js}: {', '.join(missing)}")
 
         if sys.platform == "darwin":
             import webview.platforms.cocoa  # noqa: F401
