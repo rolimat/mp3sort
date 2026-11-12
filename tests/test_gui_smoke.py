@@ -1,13 +1,14 @@
 import shutil
 import time
-import tkinter as tk
 from pathlib import Path
 
 import pytest
 
-import sorter.gui_model as gm
-from sorter.gui import App, trunc
-from sorter.gui_model import Model
+tk = pytest.importorskip("tkinter")  # absent on minimal CI images
+
+import sorter.gui_model as gm  # noqa: E402
+from sorter.gui import App, trunc  # noqa: E402
+from sorter.gui_model import Model  # noqa: E402
 
 AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
 needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing a1.mp3")
