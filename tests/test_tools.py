@@ -188,21 +188,61 @@ def test_version_from_tag():
     assert r.stdout.strip() == "1.2.3"
 
 
+def _workflow_problems(t: str) -> list[str]:
+    """Structural guards for release.yml (line based, no YAML parser needed)."""
+    lines, bad = t.splitlines(), []
+    indent = lambda l: len(l) - len(l.lstrip())
+    for n, line in enumerate(lines):  # a run: block is its line plus the deeper-indented lines after it
+        if line.lstrip().startswith(("run:", "- run:")):
+            block = [line]
+            for nxt in lines[n + 1:]:
+                if nxt.strip() and indent(nxt) <= indent(line):
+                    break
+                block.append(nxt)
+            if any("${{" in b for b in block):
+                bad.append(f"expression in run block at line {n + 1}")
+    jobs = {}
+    for n, line in enumerate(lines):
+        if indent(line) == 2 and line.rstrip().endswith(":") and lines.index("jobs:") < n:
+            jobs[line.strip()[:-1]] = n
+    starts = sorted(jobs.values()) + [len(lines)]
+    rel = lines[jobs["release"]:starts[starts.index(jobs["release"]) + 1]] if "release" in jobs else []
+    writes = [n for n, l in enumerate(lines) if "contents: write" in l]
+    if not writes or any(not (jobs.get("release", -1) <= n < jobs.get("release", -1) + len(rel)) for n in writes):
+        bad.append("contents: write outside the release job")
+    if "    if: startsWith(github.ref, 'refs/tags/v')" not in rel:
+        bad.append("release job not limited to tags")
+    if not any("gh release create" in l and '--repo "$GITHUB_REPOSITORY"' in l for l in rel):
+        bad.append("gh release create without --repo")
+    return bad
+
+
 def test_release_workflow():
     import re
 
     wf = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
-    assert wf.exists()
     t = wf.read_text(encoding="utf-8")
     for needle in ('tags: ["v*.*.*"]', "pull_request:", "macos-latest", 'python-version: "3.14"',
-                   "pytest -q", "tools/build_app.sh", "gh release create"):
+                   "pytest -q", "tools/build_app.sh", "gh release create", "fetch-depth: 0",
+                   'git merge-base --is-ancestor "$GITHUB_SHA" origin/main', "retention-days: 7",
+                   "group: release-${{ github.ref }}",
+                   "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", "cat dist/SOURCE.txt"):
         assert needle in t, needle
     assert "--clobber" not in t and "--draft" not in t
     assert set(re.findall(r"secrets\.\w+", t)) == {"secrets.GITHUB_TOKEN"}
-    assert t.count("contents: write") == 1
     assert re.search(r"^permissions:\n  contents: read$", t, re.M)
-    # event data must not be interpolated into scripts
-    assert "${{ github.ref_name }}" not in t
+    assert _workflow_problems(t) == []
+    # each bypass found in review must now be caught
+    mutated = {
+        "expression in run block": t.replace('echo "version=$v"', 'echo "${{ github.head_ref }}"\n          echo "version=$v"'),
+        "contents: write outside": t.replace("permissions:\n  contents: read", "permissions:\n  contents: write", 1)
+                                   .replace("      contents: write", "      contents: read"),
+        "not limited to tags": t.replace("    if: startsWith(github.ref, 'refs/tags/v')\n", ""),
+        "without --repo": t.replace('--repo "$GITHUB_REPOSITORY" ', ""),
+    }
+    for problem, text in mutated.items():
+        assert text != t, problem
+        assert any(problem in p for p in _workflow_problems(text)), problem
 
 
 def _fake_repo(tmp_path, spec=True):

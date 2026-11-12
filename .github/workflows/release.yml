@@ -5,6 +5,9 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   build:
     runs-on: macos-latest
@@ -12,6 +15,11 @@ jobs:
       version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - if: github.event_name == 'push'
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_REF_NAME is not on main" >&2; exit 1; }
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
@@ -33,8 +41,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dmg
-          path: dist/*.dmg
+          path: |
+            dist/*.dmg
+            dist/SOURCE.txt
           if-no-files-found: error
+          retention-days: 7
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -50,9 +61,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          notes="Open the dmg and drag mp3sort to Applications.
-
-          The first open is blocked because the app is not notarized: go to System Settings > Privacy & Security and click \"Open Anyway\".
-
-          Apple Silicon only. Licensed GPL-3.0-or-later. Source: https://github.com/rolimat/mp3sort"
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg --repo "$GITHUB_REPOSITORY" --title "mp3sort $VERSION" --notes "$notes"
+          {
+            echo "Open the dmg and drag mp3sort to Applications."
+            echo
+            echo "The first open is blocked because the app is not notarized: go to System Settings > Privacy & Security and click \"Open Anyway\"."
+            echo
+            echo "Apple Silicon only. Licensed GPL-3.0-or-later."
+            echo
+            cat dist/SOURCE.txt
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg --repo "$GITHUB_REPOSITORY" --title "mp3sort $VERSION" --notes-file notes.md
