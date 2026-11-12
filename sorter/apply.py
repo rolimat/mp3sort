@@ -2,18 +2,40 @@ import shutil
 from pathlib import Path
 
 from mutagen import apev2
-from mutagen.id3 import ID3, TIT2, TPE1, ID3NoHeaderError
+from mutagen.id3 import COMM, ID3, ID3NoHeaderError, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TPUB
 from mutagen.mp3 import MP3
 
 from sorter.scan import Item, name_key
 
 
+FIELDS = ("artist", "title", "album", "genre", "year", "key", "bpm", "label", "comment")
+FRAME = {"artist": "TPE1", "title": "TIT2", "album": "TALB", "genre": "TCON", "year": "TDRC",
+         "key": "TKEY", "bpm": "TBPM", "label": "TPUB", "comment": "COMM"}
+_CLS = {"TPE1": TPE1, "TIT2": TIT2, "TALB": TALB, "TCON": TCON, "TDRC": TDRC,
+        "TKEY": TKEY, "TBPM": TBPM, "TPUB": TPUB}
+
 COPIED_NOT_DELETED = "copied and verified, but the original could not be deleted (both remain)"
 
 
-def apply_item(item: Item, dest: Path) -> str | None:
-    """Move item.src into dest with cleaned tags. Returns None on success, else an error message."""
-    name = item.proposal.filename
+def _wanted(item: Item, tags: dict[str, str]) -> dict[str, str]:
+    """field -> value to write ("" = remove). Fields not in the result are left untouched."""
+    want = {"artist": item.proposal.artist, "title": item.proposal.title,
+            "album": "", "genre": "", "comment": ""}
+    want.update(tags)
+    return want
+
+
+def apply_item(item: Item, dest: Path, tags: dict[str, str] | None = None,
+               filename: str | None = None) -> str | None:
+    """Move item.src into dest with cleaned tags. Returns None on success, else an error message.
+
+    tags: optional exact values per field (see FIELDS); "" removes the frame, absent keys keep the
+    default behaviour. filename overrides the proposed file name."""
+    bad = [k for k in tags or () if k not in FIELDS]
+    if bad:
+        return f"unknown tag field: {', '.join(bad)}"
+    want = _wanted(item, tags or {})
+    name = filename or item.proposal.filename
     if name is None:
         return "no proposed name"
     target = dest / name
@@ -37,20 +59,25 @@ def apply_item(item: Item, dest: Path) -> str | None:
     try:
         shutil.copystat(item.src, target)
         try:
-            tags = ID3(target)
-            v2 = tags.version[1] if tags.version[1] in (3, 4) else 4  # v2.2 cannot be written
+            id3 = ID3(target)
+            v2 = id3.version[1] if id3.version[1] in (3, 4) else 4  # v2.2 cannot be written
         except ID3NoHeaderError:
-            tags, v2 = ID3(), 4
-        tags.setall("TPE1", [TPE1(encoding=3, text=item.proposal.artist)])
-        tags.setall("TIT2", [TIT2(encoding=3, text=item.proposal.title)])
-        for k in ("TALB", "TCON", "COMM"):
-            tags.delall(k)
-        tags.save(target, v1=1, v2_version=v2)
+            id3, v2 = ID3(), 4
+        for field, value in want.items():
+            frame = FRAME[field]
+            id3.delall(frame)
+            if value == "":
+                continue
+            id3.add(COMM(encoding=3, lang="eng", desc="", text=value) if frame == "COMM"
+                    else _CLS[frame](encoding=3, text=value))
+        id3.save(target, v1=1, v2_version=v2)
         size0 = target.stat().st_size
         apev2.delete(target)  # APEv2 carries junk (sites, comments); PRIV/Traktor (ID3) is kept
         chk = ID3(target)
-        if chk["TPE1"].text != [item.proposal.artist] or chk["TIT2"].text != [item.proposal.title]:
-            raise ValueError("written tags do not match")
+        for field, value in want.items():
+            got = [[str(x) for x in f.text] for f in chk.getall(FRAME[field])]
+            if got != ([[value]] if value else []):
+                raise ValueError("written tags do not match")
         try:
             apev2.APEv2(target)
             raise ValueError("an APEv2 tag remains")

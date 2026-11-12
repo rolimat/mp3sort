@@ -7,7 +7,7 @@ from conftest import audio_path
 from mutagen.apev2 import APEv2, APENoHeaderError
 from mutagen.id3 import COMM, ID3, PRIV, TALB, TBPM, TCON, TDRC, TIT2, TKEY, TPE1, TPUB
 
-from sorter.apply import apply_item
+from sorter.apply import FRAME, apply_item
 from sorter.clean import Proposal
 from sorter.scan import Item
 
@@ -225,3 +225,52 @@ def test_apply_big_ape_on_cbr_without_xing(tmp_path):
     assert apply_item(item, dest) is None
     out = dest / "Lumen - Prisma.mp3"
     assert out.exists() and not f.exists() and b"APETAGEX" not in out.read_bytes()
+
+
+ALL = {"artist": "A Name", "title": "T Name", "album": "Alb", "genre": "Ambient", "year": "2021-05",
+       "key": "8A", "bpm": "126.5", "label": "Lbl", "comment": "hello"}
+
+
+def test_apply_tags_override_all_fields(tmp_path):
+    item, dest = setup(tmp_path)
+    assert apply_item(item, dest, tags=ALL, filename="Custom Name.mp3") is None
+    out = dest / "Custom Name.mp3"
+    assert out.exists() and not item.src.exists()
+    t = ID3(out)
+    for field, frame in FRAME.items():
+        got = t.getall(frame)[0].text
+        assert [str(x) for x in got] == [ALL[field]], field
+    assert t.getall("COMM")[0].lang == "eng" and t.getall("COMM")[0].desc == ""
+    assert not t.getall("COMM:x")
+
+
+def test_apply_tags_empty_removes_frame(tmp_path):
+    item, dest = setup(tmp_path)
+    assert apply_item(item, dest, tags={"bpm": "", "key": "", "artist": "Solo"}) is None
+    t = ID3(dest / "Lumen - Prisma.mp3")
+    assert not t.getall("TBPM") and not t.getall("TKEY")
+    assert t["TPE1"].text == ["Solo"]
+
+
+def test_apply_tags_untouched_fields_keep_source(tmp_path):
+    item, dest = setup(tmp_path)
+    assert apply_item(item, dest, tags={"album": "New Album"}) is None
+    t = ID3(dest / "Lumen - Prisma.mp3")
+    assert t["TALB"].text == ["New Album"] and not t.getall("TCON") and not t.getall("COMM")
+    assert t["TKEY"].text == ["Am"] and t["TBPM"].text == ["128"] and t["TPUB"].text == ["Label"]
+    assert str(t["TDRC"].text[0]) == "2020"
+    assert t["TPE1"].text == ["Lumen"] and t["TIT2"].text == ["Prisma"]
+
+
+def test_apply_filename_override_never_overwrites(tmp_path):
+    item, dest = setup(tmp_path)
+    (dest / "Other.MP3").write_bytes(b"keep")
+    assert apply_item(item, dest, filename="other.mp3")
+    assert (dest / "Other.MP3").read_bytes() == b"keep" and item.src.exists()
+
+
+def test_apply_unknown_tag_key(tmp_path):
+    item, dest = setup(tmp_path)
+    before = sha(item.src)
+    assert "bogus" in apply_item(item, dest, tags={"bogus": "x"})
+    assert sha(item.src) == before and not list(dest.iterdir())
