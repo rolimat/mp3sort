@@ -29,7 +29,7 @@ class ApiImpl:
         edited = [f for f in FIELDS if r.values[f] != r.suggested[f]]
         return {"n": i + 1, "selected": r.selected, "chip": "warn" if flags else "edit" if edited else "",
                 "flags": flags, "values": dict(r.values), "edited_fields": edited, "kbps": r.kbps,
-                "vbr": r.vbr, "low_kbps": m.low_kbps(i), "filename": r.filename()}
+                "vbr": r.vbr, "low_kbps": m.low_kbps(i), "filename": r.filename(), "from": r.item.src.name}
 
     def _state(self) -> dict:
         m = self.model
