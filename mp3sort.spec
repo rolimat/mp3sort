@@ -1,4 +1,4 @@
-# PyInstaller spec; run via tools/build_app.sh (needs MP3SORT_VERSION and build/licenses)
+# PyInstaller spec; run via tools/build_app.sh (needs MP3SORT_VERSION, MP3SORT_MINOS and build/licenses)
 import os
 
 v = os.environ["MP3SORT_VERSION"]
@@ -22,7 +22,7 @@ app = BUNDLE(
         "CFBundleShortVersionString": v,
         "CFBundleVersion": v,
         "NSHighResolutionCapable": True,
-        "LSMinimumSystemVersion": "13.0",
+        "LSMinimumSystemVersion": os.environ["MP3SORT_MINOS"],  # minos of the bundled Python
         "NSDownloadsFolderUsageDescription": why,
         "NSDocumentsFolderUsageDescription": why,
         "NSDesktopFolderUsageDescription": why,

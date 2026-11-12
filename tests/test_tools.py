@@ -203,3 +203,52 @@ def test_release_workflow():
     assert re.search(r"^permissions:\n  contents: read$", t, re.M)
     # event data must not be interpolated into scripts
     assert "${{ github.ref_name }}" not in t
+
+
+def _fake_repo(tmp_path, spec=True):
+    import shutil
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    shutil.copy(Path(__file__).resolve().parent.parent / "tools" / "build_app.sh", repo / "tools")
+    (repo / "build").mkdir()
+    (repo / "dist").mkdir()
+    (repo / "sorter").mkdir()
+    if spec:
+        (repo / "mp3sort.spec").write_text("")
+    return repo
+
+
+def _run_build(repo, env_extra, cwd):
+    import os
+    import subprocess
+    env = {**os.environ, "CDPATH": str(cwd), **env_extra}
+    return subprocess.run(["bash", str(repo / "tools" / "build_app.sh"), "0.0.0"], cwd=cwd,
+                          capture_output=True, text=True, env=env)
+
+
+def test_build_script_checks_pyinstaller_before_deleting(tmp_path):
+    repo = _fake_repo(tmp_path)
+    fake = tmp_path / "nopyi"
+    fake.write_text('#!/bin/sh\nexit 1\n')
+    fake.chmod(0o755)
+    r = _run_build(repo, {"PYTHON": str(fake)}, tmp_path)
+    assert r.returncode == 1 and "PyInstaller not found" in r.stderr
+    assert (repo / "build").is_dir() and (repo / "dist").is_dir()
+
+
+def test_build_script_refuses_outside_the_repo(tmp_path):
+    repo = _fake_repo(tmp_path, spec=False)
+    r = _run_build(repo, {"PYTHON": "/bin/false"}, tmp_path)
+    assert r.returncode == 1 and "not the mp3sort repo" in r.stderr
+    assert (repo / "build").is_dir() and (repo / "dist").is_dir()
+
+
+def test_build_script_rules():
+    root = Path(__file__).resolve().parent.parent
+    sh = (root / "tools" / "build_app.sh").read_text()
+    assert 'rm -rf "$ROOT/build" "$ROOT/dist"' in sh and "unset CDPATH" in sh
+    assert sh.index('import PyInstaller') < sh.index("rm -rf")
+    assert "for try in 1 2 3" in sh and "--check-bundle" in sh
+    assert 'if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"' in sh
+    spec = (root / "mp3sort.spec").read_text()
+    assert 'os.environ["MP3SORT_MINOS"]' in spec and '"13.0"' not in spec

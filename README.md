@@ -28,10 +28,13 @@ macOS may ask for access to folders (Downloads, Documents, external drives), and
 ## Releasing
 
 ```sh
-git tag vX.Y.Z && git push origin vX.Y.Z   # CI builds the dmg and publishes the release
+git tag vX.Y.Z && git push origin vX.Y.Z   # CI builds the dmg and publishes the release (tag must be on main)
+.venv/bin/pip install -r requirements-build.txt   # PyInstaller, needed for a local build
 bash tools/build_app.sh 0.0.0              # local build, writes dist/mp3sort-0.0.0.dmg
 bash tools/make_icon.sh                    # regenerate the app icon
 ```
+
+The build uses `$PYTHON` if set, else `.venv/bin/python`, else `python3`. The app's minimum macOS is taken from the Python it bundles. Licence texts for everything bundled go into the app and the dmg (`licenses/`), with `SOURCE.txt` listing the exact source of mp3sort and of every bundled distribution. Upstream texts that wheels do not ship (OpenSSL, mpdecimal, zstd, xz, proxy_tools, PyObjC) are committed in `assets/licenses/`; the build fails if the app contains a native library without a licence notice.
 
 ## Terminal usage
 
@@ -40,7 +43,7 @@ bash tools/make_icon.sh                    # regenerate the app icon
 .venv/bin/python mp3sort.py --source "<source folder>" "<destination folder>"
 ```
 
-Without `--source`, the source folder last chosen in the GUI is used; if there is none, you get an error asking for `--source`. If the source or destination does not exist, you get an error and nothing is done. The destination cannot be inside the source (or the other way round).
+Without `--source`, the source folder last chosen in the GUI is used; if there is none, you get an error asking for `--source`. If the source or destination does not exist or cannot be read (for example because macOS has not been given access to it in System Settings > Privacy & Security), you get an error and nothing is done; sub-folders that cannot be read are skipped and counted in a warning. The destination cannot be inside the source (or the other way round).
 
 The preview has one line per file:
 
@@ -126,7 +129,7 @@ The reasons shown are: `tag and file name differ`; `artist and title swapped?`; 
 
 ### Safe moves
 
-Copy, write the tags on the copy, verify (tags read back, duration unchanged, no APEv2), then delete the original. If anything fails the copy is deleted and the original is left intact. Nothing is ever overwritten: duplicates and conflicts in the destination are skipped (`already exists in destination, not overwritten`). The destination is flat. Only `.mp3` files are processed (recursively); everything else stays in the source, as do hidden files starting with `.`. If the original cannot be deleted after the copy is verified, both remain and it is counted separately (`Copied without deleting original`).
+Copy, write the tags on the copy, verify (tags read back, duration unchanged, no APEv2), give the copy the original's modification time and permissions, flush it to disk, then delete the original. If anything fails the copy is deleted and the original is left intact. Nothing is ever overwritten: duplicates and conflicts in the destination are skipped (`already exists in destination, not overwritten`). The destination is flat. Only `.mp3` files are processed (recursively); everything else stays in the source, as do hidden files starting with `.`. If the original cannot be deleted after the copy is verified, both remain and it is counted separately (`Copied without deleting original`).
 
 ## Tests and tools
 
