@@ -8,8 +8,8 @@
   <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
   <!-- mockup "iC" coordinates (100 grid) mapped onto the 824 px tile -->
   <g transform="translate(43.84 43.84) scale(9.364)" fill="none" stroke-width="6" stroke-linecap="round">
-    <path d="M18 38 q6 -10 12 0 t12 0 t8 0 H82" stroke="#3478f6"/>
-    <path d="M18 52 q6 10 12 0 t12 0 t8 0 H82" stroke="#7b5cff"/>
-    <path d="M18 66 q6 -8 12 0 t12 0 t8 0 H82" stroke="#1d1e23"/>
+    <path d="M18 34 q6 -7 12 0 t12 0 t8 0 H82" stroke="#3478f6"/>
+    <path d="M18 50 q6 7 12 0 t12 0 t8 0 H82" stroke="#7b5cff"/>
+    <path d="M18 66 q6 -7 12 0 t12 0 t8 0 H82" stroke="#1d1e23"/>
   </g>
 </svg>
