@@ -51,15 +51,15 @@ The GUI is a native pywebview window (spreadsheet layout) in which every tag tha
 
 or double-click `mp3sort-gui.command` in Finder. macOS may block the first double-click because the script is not signed: right-click it and choose Open, or allow it in System Settings > Privacy & Security.
 
-The page is local only: it is loaded from files inside the package, makes no network requests and runs under a strict Content-Security-Policy.
+The page is local only: it is loaded from files inside the package, makes no network requests and runs under a restrictive Content-Security-Policy that blocks network access and inline scripts.
 
 1. **Choose folders.** Use the `Choose…` buttons next to Source and Destination; they open the native folder picker. Both choices are remembered in `~/Library/Application Support/mp3sort/settings.json`. On first launch (no settings file yet) both fields show `(not set)`.
 2. **Scan.** `Scan` is enabled once both folders are set. The table lists every `.mp3` with the columns: checkbox, chip (⚠ warning, ✎ edited), `#`, `Artist`, `Title`, `Genre`, `Year`, `Key`, `BPM` and `kbps` (read-only, `VBR` where applicable; in a group of duplicates, a lower bitrate than the best one is shown in red). Hover a ⚠ to see the reasons.
-3. **Select.** Flagged rows start unchecked. Click the checkbox of a row to toggle it. A row with no file name (empty artist or title) cannot be checked. The footer shows `N tracks · N ok · N ⚠ · N edited · N selected`.
-4. **Edit.** Double-click a cell, or focus it and press Enter, to edit it. Enter saves, Esc cancels, Tab saves and moves to the next editable cell (Shift+Tab to the previous one). Edited cells are shown in purple and the row gets a ✎ chip; typing the suggested value back clears the mark. `↺ Reset row` restores the suggested values of all fields of the selected row.
-5. **Strip.** Selecting a row fills the strip under the table: the resulting file name (updated live), the editable `Album`, `Label` and `Comment` fields (same keys: Enter saves, Esc cancels), `From` (the source file name) and `Removed` (the APE tag if present, plus the old Album, Genre and Comment values that will be removed).
+3. **Select.** Flagged rows start unchecked. Click the checkbox of a row to toggle it. A row with no file name (empty artist or title) cannot be checked, and emptying the artist or title of a checked row unchecks it. The footer shows `N tracks · N ok · N ⚠ · N edited · N selected`.
+4. **Edit.** Double-click a cell, or focus it and press Enter, to edit it. Enter saves, Esc cancels, Tab saves and moves to the next editable cell (Shift+Tab to the previous one); Tab navigation works in table cells only. Edited cells are shown in purple and the row gets a ✎ chip; typing the suggested value back clears the mark. `↺ Reset row` restores the suggested values of all fields of the selected row.
+5. **Strip.** Selecting a row fills the strip under the table: the resulting file name (updated after each saved edit, not per keystroke), the editable `Album`, `Label` and `Comment` fields (Enter saves, Esc cancels; no Tab navigation), `From` (the source file name) and `Removed` (the APE tag if present, plus the Album, Genre and Comment values currently in the file: removed, or replaced by your edits).
 6. **Move.** The button reads `Move K tracks`. It asks for confirmation (`To <destination>.`, plus how many selected tracks have edited tags), then moves the files while showing `Moving i / n · <name>` and a progress bar.
-7. **Results.** A results list shows each file with `✓` (moved), `!` (copied but original not deleted) or `✗` (failed, with the message), and the footer shows the same `Moved: …` summary as the terminal. The source is then rescanned automatically, so the table is up to date when you press `Scan again`.
+7. **Results.** A results list shows each file with `✓` (moved), `!` (copied but original not deleted) or `✗` (failed, with the message), and the footer shows the same `Moved: …` summary as the terminal. The source is rescanned automatically after the move; `Scan again` returns to the table.
 
 ### Validation
 
@@ -84,7 +84,7 @@ Once a row has been edited, the warnings that describe where the suggestion came
 
 - While a cell or strip field is open (or holds a value that failed validation), `Move`, `Scan`, `Choose…` and `↺ Reset row` are disabled: save with Enter or cancel with Esc first.
 - `Scan` and `Choose…` ask for confirmation (`Discard N edited tracks?`) when there are unsaved edits, since they are lost when the folders are scanned again.
-- While files are being moved, the table, the strip and the folder controls are disabled and the window cannot be closed, either with the window button or with Cmd+Q; both go through the same check and are refused until the move finishes.
+- While files are being moved, the table, the strip and the folder controls are disabled and the window cannot be closed, either with the window button or with Cmd+Q; both go through the same check and are refused until the move finishes (handled through the window's close check; reported by pywebview on macOS).
 
 ## How it works
 
