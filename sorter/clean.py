@@ -120,6 +120,14 @@ _REMIX_TAIL = re.compile(r"\S+\s+\S*Remix$", re.I)
 _WEIRD = re.compile(r'[<>|*"]|(?<!\S)(?=[\W_])[^\s&+/\-](?=[\s,]|$)')
 
 
+def remix_flag(title: str) -> str:
+    return "remix without parentheses, check" if _REMIX_TAIL.search(title) else ""
+
+
+def odd_flag(artist: str, title: str) -> str:
+    return "odd characters in artist or title" if _WEIRD.search(artist) or _WEIRD.search(title) else ""
+
+
 def _paren_mix(title: str, fp: tuple[str, str] | None, flags: list[str]) -> str:
     if title.endswith(")"):
         return title
@@ -131,8 +139,8 @@ def _paren_mix(title: str, fp: tuple[str, str] | None, flags: list[str]) -> str:
                 return f"{' '.join(words[:k])} ({' '.join(words[k:])})"
     if m := _MIX_PHRASE.match(title):
         return f"{m.group(1)} ({m.group(2)})"
-    if _REMIX_TAIL.search(title):
-        flags.append("remix without parentheses, check")
+    if remix_flag(title):
+        flags.append(remix_flag(title))
     return title
 
 
@@ -140,6 +148,6 @@ def propose(filename: str, tag_artist: str | None, tag_title: str | None) -> Pro
     p = _propose(filename, tag_artist, tag_title)
     if p.artist and p.title:
         p.title = _paren_mix(p.title, parse_filename(filename), p.flags)
-        if _WEIRD.search(p.artist) or _WEIRD.search(p.title):
-            p.flags.append("odd characters in artist or title")
+        if odd_flag(p.artist, p.title):
+            p.flags.append(odd_flag(p.artist, p.title))
     return p
