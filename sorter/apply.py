@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 
@@ -15,6 +16,24 @@ _CLS = {"TPE1": TPE1, "TIT2": TIT2, "TALB": TALB, "TCON": TCON, "TDRC": TDRC,
         "TKEY": TKEY, "TBPM": TBPM, "TPUB": TPUB}
 
 COPIED_NOT_DELETED = "copied and verified, but the original could not be deleted (both remain)"
+
+
+def _fsync(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        try:
+            import fcntl
+            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)  # macOS: os.fsync does not reach the platter
+        except (ImportError, AttributeError, OSError):
+            os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _sync(target: Path) -> None:
+    """Flush the copy and its directory entry to disk before the original is deleted."""
+    _fsync(target)
+    _fsync(target.parent)
 
 
 def _wanted(item: Item, tags: dict[str, str]) -> dict[str, str]:
@@ -61,7 +80,6 @@ def apply_item(item: Item, dest: Path, tags: dict[str, str] | None = None,
     except OSError as e:
         return f"copy failed: {e}"
     try:
-        shutil.copystat(item.src, target)
         try:
             id3 = ID3(target)
             v2 = id3.version[1] if id3.version[1] in (3, 4) else 4  # v2.2 cannot be written
@@ -96,6 +114,15 @@ def apply_item(item: Item, dest: Path, tags: dict[str, str] | None = None,
         target.unlink(missing_ok=True)
         return f"error writing tags, original untouched: {e}"
     except BaseException:  # Ctrl-C: do not leave an unverified copy
+        target.unlink(missing_ok=True)
+        raise
+    try:
+        shutil.copystat(item.src, target)  # after tagging: keeps the source mtime/mode, even 0444
+        _sync(target)
+    except Exception as e:
+        target.unlink(missing_ok=True)
+        return f"could not finish the copy on disk, original untouched: {e}"
+    except BaseException:
         target.unlink(missing_ok=True)
         raise
     try:

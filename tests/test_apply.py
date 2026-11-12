@@ -297,3 +297,41 @@ def test_apply_year_forms_v23(tmp_path, year):
     item, dest = setup(tmp_path)
     assert apply_item(item, dest, tags={"year": year}) is None
     assert str(ID3(dest / "Lumen - Prisma.mp3")["TDRC"].text[0]) == year
+
+
+def test_apply_syncs_copy_before_deleting_original(tmp_path, monkeypatch):
+    import sorter.apply as ap
+
+    item, dest = setup(tmp_path)
+    seen = []
+    real = ap._sync
+    monkeypatch.setattr(ap, "_sync", lambda p: (seen.append((p, item.src.exists())), real(p)))
+    assert apply_item(item, dest) is None
+    assert seen == [(dest / "Lumen - Prisma.mp3", True)]
+
+
+def test_apply_sync_failure_keeps_original(tmp_path, monkeypatch):
+    import sorter.apply as ap
+
+    item, dest = setup(tmp_path)
+    before = sha(item.src)
+
+    def boom(p):
+        raise OSError("disk gone")
+
+    monkeypatch.setattr(ap, "_sync", boom)
+    err = apply_item(item, dest)
+    assert err and "original untouched" in err and "disk gone" in err
+    assert sha(item.src) == before and not list(dest.iterdir())
+
+
+def test_apply_readonly_source_keeps_mode_and_mtime(tmp_path):
+    import os
+
+    item, dest = setup(tmp_path)
+    os.utime(item.src, (1_000_000_000, 1_000_000_000))
+    item.src.chmod(0o444)
+    st = item.src.stat()
+    assert apply_item(item, dest) is None
+    out = (dest / "Lumen - Prisma.mp3").stat()
+    assert out.st_mtime == st.st_mtime and (out.st_mode & 0o777) == 0o444
