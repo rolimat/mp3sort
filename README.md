@@ -135,3 +135,7 @@ Tools:
 - A `<x> Remix` without parentheses is not fixed automatically; it is flagged for review.
 - The rules are heuristics; doubtful cases are flagged with ⚠ rather than resolved.
 - The GUI is tested on macOS only.
+
+## License
+
+mp3sort is free software, licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE](LICENSE).
