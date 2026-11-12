@@ -31,6 +31,8 @@ def apply_item(item: Item, dest: Path, tags: dict[str, str] | None = None,
 
     tags: optional exact values per field (see FIELDS); "" removes the frame, absent keys keep the
     default behaviour. filename overrides the proposed file name."""
+    if not all(isinstance(v, str) for v in (tags or {}).values()):
+        return "invalid tag value"
     bad = [k for k in tags or () if k not in FIELDS]
     if bad:
         return f"unknown tag field: {', '.join(bad)}"
@@ -38,6 +40,8 @@ def apply_item(item: Item, dest: Path, tags: dict[str, str] | None = None,
     name = filename or item.proposal.filename
     if name is None:
         return "no proposed name"
+    if Path(name).name != name or name in (".", "..") or "\0" in name:
+        return "invalid file name"
     target = dest / name
     try:
         if any(name_key(p.name) == name_key(name) for p in dest.iterdir()):

@@ -274,3 +274,25 @@ def test_apply_unknown_tag_key(tmp_path):
     before = sha(item.src)
     assert "bogus" in apply_item(item, dest, tags={"bogus": "x"})
     assert sha(item.src) == before and not list(dest.iterdir())
+
+
+@pytest.mark.parametrize("bad", ["../x.mp3", "/tmp/abs-x.mp3", "a/b.mp3", "..", ".", "a\0b.mp3"])
+def test_apply_rejects_unsafe_filename(tmp_path, bad):
+    item, dest = setup(tmp_path)
+    before = sha(item.src)
+    assert apply_item(item, dest, filename=bad) == "invalid file name"
+    assert sha(item.src) == before and not list(dest.iterdir())
+    assert not (tmp_path / "x.mp3").exists()
+
+
+def test_apply_rejects_non_str_tag_value(tmp_path):
+    item, dest = setup(tmp_path)
+    assert apply_item(item, dest, tags={"bpm": 128}) == "invalid tag value"
+    assert item.src.exists() and not list(dest.iterdir())
+
+
+@pytest.mark.parametrize("year", ["2021", "2021-05", "2021-05-03"])
+def test_apply_year_forms_v23(tmp_path, year):
+    item, dest = setup(tmp_path)
+    assert apply_item(item, dest, tags={"year": year}) is None
+    assert str(ID3(dest / "Lumen - Prisma.mp3")["TDRC"].text[0]) == year
