@@ -1,5 +1,7 @@
+import errno
 import os
 import shutil
+import stat
 from pathlib import Path
 
 from mutagen import apev2
@@ -18,22 +20,65 @@ _CLS = {"TPE1": TPE1, "TIT2": TIT2, "TALB": TALB, "TCON": TCON, "TDRC": TDRC,
 COPIED_NOT_DELETED = "copied and verified, but the original could not be deleted (both remain)"
 
 
+# F_FULLFSYNC is not supported on every file system (SMB, some FUSE): only then plain fsync
+_NO_FULLFSYNC = {errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP), errno.ENOTTY, errno.EINVAL}
+
+
 def _fsync(path: Path) -> None:
+    if os.name == "nt":  # Windows: fsync needs a handle opened for writing; directories cannot be opened
+        with open(path, "r+b") as f:
+            os.fsync(f.fileno())
+        return
     fd = os.open(path, os.O_RDONLY)
     try:
         try:
             import fcntl
-            fcntl.fcntl(fd, fcntl.F_FULLFSYNC)  # macOS: os.fsync does not reach the platter
-        except (ImportError, AttributeError, OSError):
+            full = fcntl.F_FULLFSYNC  # macOS: os.fsync does not reach the platter
+        except (ImportError, AttributeError):
+            os.fsync(fd)
+            return
+        try:
+            fcntl.fcntl(fd, full)
+        except OSError as e:
+            if e.errno not in _NO_FULLFSYNC:
+                raise
             os.fsync(fd)
     finally:
         os.close(fd)
 
 
 def _sync(target: Path) -> None:
-    """Flush the copy and its directory entry to disk before the original is deleted."""
+    """Flush the copy (and on POSIX its directory entry) to disk before the original is deleted."""
     _fsync(target)
-    _fsync(target.parent)
+    if os.name != "nt":
+        _fsync(target.parent)
+
+
+def _remove_copy(target: Path, msg: str) -> str:
+    """Delete our own copy; never raises. Returns msg, extended when the copy could not be removed."""
+    try:
+        target.unlink(missing_ok=True)
+        return msg
+    except OSError:
+        pass
+    try:
+        os.chmod(target, stat.S_IMODE(os.stat(target).st_mode) | stat.S_IWUSR)
+        target.unlink(missing_ok=True)
+        return msg
+    except OSError:
+        return f"{msg} (copy left at {target}, original untouched)"
+
+
+def _copy_metadata(src: Path, target: Path, mode: bool) -> None:
+    """Best effort (FAT/exFAT refuse some of it): times, or the permission bits. No BSD flags."""
+    try:
+        st = src.stat()
+        if mode:
+            os.chmod(target, stat.S_IMODE(st.st_mode))
+        else:
+            os.utime(target, ns=(st.st_atime_ns, st.st_mtime_ns))
+    except OSError:
+        pass
 
 
 def _wanted(item: Item, tags: dict[str, str]) -> dict[str, str]:
@@ -68,17 +113,24 @@ def apply_item(item: Item, dest: Path, tags: dict[str, str] | None = None,
     except OSError as e:
         return f"cannot read destination: {e}"
     try:
-        with open(item.src, "rb") as r, open(target, "xb") as w:  # "x": never overwrites
-            try:
-                shutil.copyfileobj(r, w)
-            except BaseException:
-                w.close()
-                target.unlink(missing_ok=True)  # only after open "xb" succeeded: the copy is ours
-                raise
-    except FileExistsError:
-        return "already exists in destination, not overwritten"
+        r = open(item.src, "rb")
     except OSError as e:
-        return f"copy failed: {e}"
+        return f"copy failed, original untouched: {e}"
+    with r:
+        try:
+            w = open(target, "xb")  # "x": never overwrites
+        except FileExistsError:
+            return "already exists in destination, not overwritten"
+        except OSError as e:
+            return f"copy failed, original untouched: {e}"
+        try:  # from here the file is ours: any failure, including the final close, removes it
+            with w:
+                shutil.copyfileobj(r, w)
+        except Exception as e:
+            return _remove_copy(target, f"copy failed, original untouched: {e}")
+        except BaseException:
+            _remove_copy(target, "")
+            raise
     try:
         try:
             id3 = ID3(target)
@@ -111,20 +163,19 @@ def apply_item(item: Item, dest: Path, tags: dict[str, str] | None = None,
         if abs(info.length - MP3(item.src).info.length) > 0.1 + extra:
             raise ValueError("duration changed")
     except Exception as e:
-        target.unlink(missing_ok=True)
-        return f"error writing tags, original untouched: {e}"
+        return _remove_copy(target, f"error writing tags, original untouched: {e}")
     except BaseException:  # Ctrl-C: do not leave an unverified copy
-        target.unlink(missing_ok=True)
+        _remove_copy(target, "")
         raise
+    _copy_metadata(item.src, target, mode=False)  # after tagging, which would reset the mtime
     try:
-        shutil.copystat(item.src, target)  # after tagging: keeps the source mtime/mode, even 0444
         _sync(target)
     except Exception as e:
-        target.unlink(missing_ok=True)
-        return f"could not finish the copy on disk, original untouched: {e}"
+        return _remove_copy(target, f"could not finish the copy on disk, original untouched: {e}")
     except BaseException:
-        target.unlink(missing_ok=True)
+        _remove_copy(target, "")
         raise
+    _copy_metadata(item.src, target, mode=True)  # after the sync: Windows needs a writable handle
     try:
         item.src.unlink()
     except OSError as e:

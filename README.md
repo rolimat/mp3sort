@@ -129,7 +129,7 @@ The reasons shown are: `tag and file name differ`; `artist and title swapped?`; 
 
 ### Safe moves
 
-Copy, write the tags on the copy, verify (tags read back, duration unchanged, no APEv2), give the copy the original's modification time and permissions, flush it to disk, then delete the original. If anything fails the copy is deleted and the original is left intact. Nothing is ever overwritten: duplicates and conflicts in the destination are skipped (`already exists in destination, not overwritten`). The destination is flat. Only `.mp3` files are processed (recursively); everything else stays in the source, as do hidden files starting with `.`. If the original cannot be deleted after the copy is verified, both remain and it is counted separately (`Copied without deleting original`).
+Copy, write the tags on the copy, verify (tags read back, duration unchanged, no APEv2), flush it to disk, then delete the original. The copy gets the original's modification time and permission bits where the file system allows it (best effort; file flags are not copied). If anything fails the copy is deleted and the original is left intact; in the rare case the copy cannot be deleted either, the message says where it was left. Nothing is ever overwritten: duplicates and conflicts in the destination are skipped (`already exists in destination, not overwritten`). The destination is flat. Only `.mp3` files are processed (recursively); everything else stays in the source, as do hidden files starting with `.`. If the original cannot be deleted after the copy is verified, both remain and it is counted separately (`Copied without deleting original`).
 
 ## Tests and tools
 

@@ -335,3 +335,139 @@ def test_apply_readonly_source_keeps_mode_and_mtime(tmp_path):
     assert apply_item(item, dest) is None
     out = (dest / "Lumen - Prisma.mp3").stat()
     assert out.st_mtime == st.st_mtime and (out.st_mode & 0o777) == 0o444
+
+
+def test_sync_on_windows_uses_writable_handle_and_skips_dir(tmp_path, monkeypatch):
+    import sorter.apply as ap
+
+    f = tmp_path / "x.mp3"
+    f.write_bytes(b"data")
+    synced = []
+    monkeypatch.setattr(ap.os, "fsync", lambda fd: synced.append(fd))
+
+    def no_os_open(*a, **k):
+        raise AssertionError("POSIX path used")
+
+    monkeypatch.setattr(ap.os, "open", no_os_open)
+    monkeypatch.setattr(ap.os, "name", "nt")
+    ap._sync(f)
+    assert len(synced) == 1  # the file only, through a handle opened r+b
+
+
+def test_fullfsync_fallback_only_for_unsupported(tmp_path, monkeypatch):
+    import errno
+    import fcntl
+    import sorter.apply as ap
+
+    f = tmp_path / "x"
+    f.write_bytes(b"data")
+    monkeypatch.setattr(fcntl, "F_FULLFSYNC", 51, raising=False)
+    synced = []
+    monkeypatch.setattr(ap.os, "fsync", lambda fd: synced.append(fd))
+    for code in (errno.ENOTSUP, errno.ENOTTY, errno.EINVAL):
+        def unsupported(fd, op, code=code):
+            raise OSError(code, "nope")
+        monkeypatch.setattr(fcntl, "fcntl", unsupported)
+        ap._fsync(f)
+    assert len(synced) == 3
+
+    def io_error(fd, op):
+        raise OSError(errno.EIO, "I/O error")
+
+    monkeypatch.setattr(fcntl, "fcntl", io_error)
+    with pytest.raises(OSError):
+        ap._fsync(f)
+
+
+def test_fullfsync_error_keeps_original(tmp_path, monkeypatch):
+    import errno
+    import fcntl
+
+    item, dest = setup(tmp_path)
+    monkeypatch.setattr(fcntl, "F_FULLFSYNC", 51, raising=False)
+
+    def io_error(fd, op):
+        raise OSError(errno.EIO, "I/O error")
+
+    monkeypatch.setattr(fcntl, "fcntl", io_error)
+    err = apply_item(item, dest)
+    assert err and "original untouched" in err and item.src.exists() and not list(dest.iterdir())
+
+
+def test_close_error_removes_partial_copy(tmp_path, monkeypatch):
+    import builtins
+    import errno
+    import sorter.apply as ap
+
+    item, dest = setup(tmp_path)
+    before = sha(item.src)
+
+    class Full:
+        def __init__(self, f):
+            self.f = f
+
+        def write(self, b):
+            return self.f.write(b[: len(b) // 2])  # the disk takes only part of it
+
+        def close(self):
+            self.f.close()
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self.close()
+
+    def fake_open(p, mode="r", *a, **k):
+        f = builtins.open(p, mode, *a, **k)
+        return Full(f) if mode == "xb" else f
+
+    monkeypatch.setattr(ap, "open", fake_open, raising=False)
+    err = apply_item(item, dest)
+    assert err.startswith("copy failed") and "original untouched" in err and "No space left" in err
+    assert not list(dest.iterdir()) and sha(item.src) == before
+
+
+def test_cleanup_failure_is_reported_not_raised(tmp_path, monkeypatch):
+    import sorter.apply as ap
+
+    item, dest = setup(tmp_path)
+    real_unlink = Path.unlink
+
+    def locked(self, missing_ok=False):
+        if self.parent == dest:
+            raise PermissionError(1, "Operation not permitted", str(self))
+        return real_unlink(self, missing_ok=missing_ok)
+
+    def boom(p):
+        p.chmod(0o444)  # a read-only copy (e.g. Windows read-only attribute)
+        raise OSError("disk gone")
+
+    monkeypatch.setattr(ap, "_sync", boom)
+    monkeypatch.setattr(Path, "unlink", locked)
+    err = apply_item(item, dest)
+    left = dest / "Lumen - Prisma.mp3"
+    assert f"copy left at {left}, original untouched" in err and "disk gone" in err
+    assert item.src.exists() and left.exists()
+    assert left.stat().st_mode & 0o200  # write protection cleared for the retry
+
+
+def test_metadata_is_best_effort(tmp_path, monkeypatch):
+    import os
+    import sorter.apply as ap
+
+    item, dest = setup(tmp_path)
+    os.utime(item.src, (1_000_000_000, 1_000_000_000))
+
+    def no_chmod(*a, **k):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(ap.os, "chmod", no_chmod)
+    assert apply_item(item, dest) is None
+    assert (dest / "Lumen - Prisma.mp3").stat().st_mtime == 1_000_000_000
+
+
+def test_no_bsd_flags_copied():
+    src = (Path(__file__).resolve().parent.parent / "sorter" / "apply.py").read_text()
+    assert "copystat" not in src and "chflags" not in src
