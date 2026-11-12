@@ -125,7 +125,7 @@ def test_apply_id3v22_source(tmp_path, monkeypatch):
         version = property(lambda self: (2, 2, 0), lambda self, v: None)
 
         def save(self, f, v1=1, v2_version=4, **k):
-            assert v2_version in (3, 4)  # mutagen solo escribe v2.3/v2.4
+            assert v2_version in (3, 4)  # mutagen only writes v2.3/v2.4
             super().save(f, v1=v1, v2_version=v2_version, **k)
 
     monkeypatch.setattr("sorter.apply.ID3", V22)
@@ -150,7 +150,7 @@ def test_apply_interrupt_cleans_copy(tmp_path, monkeypatch):
 def test_apply_verification_mismatch(tmp_path, monkeypatch):
     item, dest = setup(tmp_path)
     h = sha(item.src)
-    monkeypatch.setattr(ID3, "save", lambda *a, **k: None)  # tags no se escriben
+    monkeypatch.setattr(ID3, "save", lambda *a, **k: None)  # tags are not written
     assert apply_item(item, dest)
     assert list(dest.iterdir()) == [] and sha(item.src) == h
 

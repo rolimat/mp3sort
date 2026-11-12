@@ -20,10 +20,10 @@ def item(tmp_path, name="a.mp3", flags=(), fn="A - B.mp3", sel=True):
 
 def test_settings(tmp_path):
     p = tmp_path / "x" / "settings.json"
-    assert load_settings(p) == (gm.DEFAULT_SOURCE, None)
+    assert load_settings(p) == (None, None)
     p.parent.mkdir()
     p.write_text("{nope")
-    assert load_settings(p) == (gm.DEFAULT_SOURCE, None)
+    assert load_settings(p) == (None, None)
     s, d = tmp_path / "gone1", tmp_path / "gone2"
     save_settings(s, d, p)
     assert load_settings(p) == (s, d)

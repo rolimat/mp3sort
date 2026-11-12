@@ -5,7 +5,6 @@ from sorter.apply import COPIED_NOT_DELETED, apply_item
 from sorter.folders import check_folders
 from sorter.scan import Item, scan
 
-DEFAULT_SOURCE = Path.home() / "Soulseek Downloads" / "complete"
 HELP = "Numbers to EXCLUDE/INCLUDE (e.g. 3,5), Enter = apply, q = quit"
 
 
@@ -47,7 +46,11 @@ def main(argv: list[str] | None = None, input_fn=input) -> int:
     ap.add_argument("dest", type=Path, help="destination folder")
     ap.add_argument("--source", type=Path, default=None, help="source folder")
     args = ap.parse_args(argv)
-    source = args.source or DEFAULT_SOURCE  # lookup en llamada, no en import
+    from sorter.gui_model import load_settings  # same saved source as the GUI
+    source = args.source or load_settings()[0]
+    if source is None:
+        print("Error: no source folder: pass --source or choose one in the GUI")
+        return 2
     dest = args.dest
     err = check_folders(source, dest)
     if err:

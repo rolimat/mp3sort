@@ -7,7 +7,6 @@ from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
 
 from sorter.apply import COPIED_NOT_DELETED, apply_item
-from sorter.cli import DEFAULT_SOURCE
 from sorter.folders import check_folders
 from sorter.scan import Item, scan
 
@@ -22,7 +21,7 @@ def load_settings(path: Path | None = None) -> tuple[Path | None, Path | None]:
         return (Path(s) if isinstance(s, str) and s else None,
                 Path(t) if isinstance(t, str) and t else None)
     except Exception:
-        return DEFAULT_SOURCE, None
+        return None, None
 
 
 def save_settings(source: Path | None, dest: Path | None, path: Path | None = None) -> None:

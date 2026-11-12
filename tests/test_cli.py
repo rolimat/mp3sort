@@ -59,12 +59,23 @@ def test_parse_selection():
 
 def test_main_dest_missing():
     def boom(*a):
-        raise AssertionError("no debe pedir input")
+        raise AssertionError("must not ask for input")
     assert main(["/nonexistent"], input_fn=boom) == 2
 
 
-def test_main_default_source_blocked(tmp_path):
+def test_main_without_source_or_settings(tmp_path, capsys):
     assert main([str(tmp_path)], input_fn=feed()) == 2
+    assert "no source folder" in capsys.readouterr().out
+
+
+def test_main_uses_saved_source(tmp_path, monkeypatch):
+    import sorter.gui_model as gm
+    src, dest = folders(tmp_path)
+    f = put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
+    monkeypatch.setattr(gm, "SETTINGS_PATH", tmp_path / "cfg" / "settings.json")
+    gm.save_settings(src, None)
+    assert main([str(dest)], input_fn=feed("q")) == 0
+    assert f.exists()
 
 
 def test_main_quit_and_eof(tmp_path):

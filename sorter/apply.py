@@ -23,7 +23,7 @@ def apply_item(item: Item, dest: Path) -> str | None:
     except OSError as e:
         return f"cannot read destination: {e}"
     try:
-        with open(item.src, "rb") as r, open(target, "xb") as w:  # "x": nunca sobrescribe
+        with open(item.src, "rb") as r, open(target, "xb") as w:  # "x": never overwrites
             try:
                 shutil.copyfileobj(r, w)
             except BaseException:

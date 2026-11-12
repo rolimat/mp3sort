@@ -32,10 +32,8 @@ def audio() -> Path:
 @pytest.fixture(autouse=True)
 def _never_read_real_source(monkeypatch):
     # Keep tests from reading the real source folder.
-    nowhere = Path("/nonexistent-mp3sort-source")
-    if importlib.util.find_spec("sorter.cli") is not None:
-        import sorter.cli
-        monkeypatch.setattr(sorter.cli, "DEFAULT_SOURCE", nowhere)
+    # No saved settings: the CLI has no default source unless a test saves one.
     if importlib.util.find_spec("sorter.gui_model") is not None:
         import sorter.gui_model
-        monkeypatch.setattr(sorter.gui_model, "DEFAULT_SOURCE", nowhere)
+        monkeypatch.setattr(sorter.gui_model, "SETTINGS_PATH",
+                            Path("/nonexistent-mp3sort-settings/settings.json"))

@@ -37,7 +37,7 @@ pyenv and Homebrew Python builds without `python-tk` (python.org macOS installer
 .venv/bin/python mp3sort.py --source "<source folder>" "<destination folder>"
 ```
 
-The default source is `~/Soulseek Downloads/complete`. If the source or destination does not exist, you get an error and nothing is done. The destination cannot be inside the source (or the other way round).
+Without `--source`, the source folder last chosen in the GUI is used; if there is none, you get an error asking for `--source`. If the source or destination does not exist, you get an error and nothing is done. The destination cannot be inside the source (or the other way round).
 
 The preview has one line per file:
 
@@ -64,7 +64,7 @@ Launch it with either:
 
 or double-click `mp3sort-gui.command` in Finder. macOS may block the first double-click because the script is not signed: right-click it and choose Open, or allow it in System Settings > Privacy & Security.
 
-1. **Choose folders.** Use the `Choose…` buttons next to Source and Destination; they open the native folder picker. Both choices are remembered in `~/Library/Application Support/mp3sort/settings.json`. The source defaults to `~/Soulseek Downloads/complete` when the settings file is missing or unreadable.
+1. **Choose folders.** Use the `Choose…` buttons next to Source and Destination; they open the native folder picker. Both choices are remembered in `~/Library/Application Support/mp3sort/settings.json`. On first launch (no settings file yet) both fields are empty.
 2. **Scan.** The Scan button is enabled once both folders are set. The table lists every `.mp3` with the columns ⚠, ✓, `#`, `New name` and `kbps`.
 3. **Select.** Flagged rows start unchecked. Click the ✓ cell of a row, or select the row and press Space, to toggle it. A row with no proposed name cannot be checked. The footer shows `N ok · M ⚠ · K selected`.
 4. **Inspect.** Selecting a row fills the "Selected track" panel with: Original file, Folder, Artist, Title, Album, Genre and Comment (old value → `(empty)`), APE tag (`present → removed` or `none`), Quality (bitrate and duration) and Warning.
