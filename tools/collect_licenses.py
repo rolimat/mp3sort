@@ -55,7 +55,7 @@ def collect_licenses(out: Path) -> list[Path]:
         if not files:
             # Some wheels (proxy_tools, pyobjc-framework-*) ship no licence file; fall back to the
             # declared licence metadata so the notice still travels. No metadata at all = fail.
-            lic = dist.metadata["License-Expression"] or dist.metadata["License"]
+            lic = dist.metadata.get("License-Expression") or dist.metadata.get("License")
             if not lic:
                 missing.append(name)
                 continue
