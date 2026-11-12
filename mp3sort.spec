@@ -27,6 +27,7 @@ app = BUNDLE(
         "NSDocumentsFolderUsageDescription": why,
         "NSDesktopFolderUsageDescription": why,
         "NSRemovableVolumesUsageDescription": why,
+        "NSNetworkVolumesUsageDescription": why,
         "NSHumanReadableCopyright": "GPL-3.0-or-later",
     },
 )

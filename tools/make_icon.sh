@@ -1,7 +1,10 @@
 #!/bin/bash
 # Render assets/icon.svg into assets/mp3sort.icns (needs macOS iconutil + rsvg-convert).
 set -euo pipefail
-cd "$(dirname "$0")/.."
+unset CDPATH
+ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+[ -f "$ROOT/assets/icon.svg" ] || { echo "not the mp3sort repo: $ROOT" >&2; exit 1; }
+cd "$ROOT"
 
 command -v iconutil >/dev/null || { echo "error: iconutil not found (macOS required)" >&2; exit 1; }
 command -v rsvg-convert >/dev/null || { echo "error: rsvg-convert not found; install it with: brew install librsvg" >&2; exit 1; }

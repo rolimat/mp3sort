@@ -292,7 +292,7 @@ def test_build_script_rules():
     assert 'rm -rf "$ROOT/build" "$ROOT/dist"' in sh and "unset CDPATH" in sh
     assert sh.index('import PyInstaller') < sh.index("rm -rf")
     assert "for try in 1 2 3" in sh and "--check-bundle" in sh
-    assert 'if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"' in sh
+    assert sh.index('if [ -n "${PYTHON:-}" ]') < sh.index('cd "$ROOT"')
     spec = (root / "mp3sort.spec").read_text()
     assert 'os.environ["MP3SORT_MINOS"]' in spec and '"13.0"' not in spec
 
@@ -309,3 +309,35 @@ def test_override_dot_files_are_not_copied(tmp_path, monkeypatch):
     monkeypatch.setattr(cl, "OVERRIDES", ov)
     cl.collect_licenses(tmp_path / "out")
     assert sorted(p.name for p in (tmp_path / "out/third-party/zstd").iterdir()) == ["LICENSE"]
+
+
+def test_build_script_resolves_relative_python_from_caller_cwd(tmp_path):
+    repo = _fake_repo(tmp_path)
+    fake = tmp_path / "nopyi"
+    fake.write_text("#!/bin/sh\nexit 1\n")
+    fake.chmod(0o755)
+    r = _run_build(repo, {"PYTHON": "./nopyi"}, tmp_path)
+    assert r.returncode == 1 and f"PyInstaller not found for {fake.resolve()}" in r.stderr
+    r = _run_build(repo, {"PYTHON": "./missing/python"}, tmp_path)
+    assert r.returncode == 1 and "PYTHON not found or not executable: ./missing/python" in r.stderr
+    assert (repo / "build").is_dir() and (repo / "dist").is_dir()
+
+
+def test_make_icon_refuses_outside_the_repo(tmp_path):
+    import os
+    import shutil
+    import subprocess
+
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    shutil.copy(Path(__file__).resolve().parent.parent / "tools" / "make_icon.sh", repo / "tools")
+    r = subprocess.run(["bash", str(repo / "tools" / "make_icon.sh")], cwd=tmp_path, capture_output=True,
+                       text=True, env={**os.environ, "CDPATH": str(tmp_path)})
+    assert r.returncode == 1 and "not the mp3sort repo" in r.stderr
+    sh = (repo / "tools" / "make_icon.sh").read_text()
+    assert "unset CDPATH" in sh and "cd -P" in sh
+
+
+def test_spec_has_network_volumes_usage():
+    spec = (Path(__file__).resolve().parent.parent / "mp3sort.spec").read_text()
+    assert '"NSNetworkVolumesUsageDescription": why' in spec

@@ -9,11 +9,17 @@ HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd -P "$HERE/.." && pwd -P)"
 # only ever delete build/ and dist/ of this repository
 [ -f "$ROOT/mp3sort.spec" ] && [ -d "$ROOT/sorter" ] || { echo "not the mp3sort repo: $ROOT" >&2; exit 1; }
-cd "$ROOT"
 
-if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"
+if [ -n "${PYTHON:-}" ]; then  # resolved against the caller's cwd, before the cd below
+  case "$PYTHON" in
+    */*) d="$(cd -P "$(dirname "$PYTHON")" 2>/dev/null && pwd -P)" || d=""
+         PY="${d:+$d/$(basename "$PYTHON")}" ;;
+    *) PY="$(command -v "$PYTHON")" || PY="" ;;
+  esac
+  [ -n "$PY" ] && [ -f "$PY" ] && [ -x "$PY" ] || { echo "PYTHON not found or not executable: $PYTHON" >&2; exit 1; }
 elif [ -x "$ROOT/.venv/bin/python" ]; then PY="$ROOT/.venv/bin/python"
 else PY=python3; fi
+cd "$ROOT"
 "$PY" -c "import PyInstaller" 2>/dev/null \
   || { echo "PyInstaller not found for $PY: run pip install -r requirements-build.txt" >&2; exit 1; }
 
