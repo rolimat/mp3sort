@@ -17,6 +17,25 @@ python3 -m venv .venv
 
 The terminal version runs on any Python 3.14; the GUI is macOS only. `requirements.txt` also installs `pywebview` and the macOS libraries it needs, so the GUI runs from the same venv as the terminal version; no extra system packages are required.
 
+## Install the app
+
+Download `mp3sort-X.Y.Z.dmg` from the [Releases](../../releases) page, open it and drag `mp3sort` to Applications. Apple Silicon only.
+
+The app is not notarized, so the first open is blocked: go to System Settings > Privacy & Security and click "Open Anyway". If that does not work, run `xattr -dr com.apple.quarantine /Applications/mp3sort.app`.
+
+macOS may ask for access to folders (Downloads, Documents, external drives), and again after each update.
+
+## Releasing
+
+```sh
+git tag vX.Y.Z && git push origin vX.Y.Z   # CI builds the dmg and publishes the release (tag must be on main)
+.venv/bin/pip install -r requirements-build.txt   # PyInstaller, needed for a local build
+bash tools/build_app.sh 0.0.0              # local build, writes dist/mp3sort-0.0.0.dmg
+bash tools/make_icon.sh                    # regenerate the app icon
+```
+
+The build uses `$PYTHON` if set, else `.venv/bin/python`, else `python3`. The app's minimum macOS is taken from the Python it bundles. Licence texts for everything bundled go into the app and the dmg (`licenses/`), with `SOURCE.txt` listing the exact source of mp3sort and of every bundled distribution. Upstream texts that wheels do not ship (OpenSSL, mpdecimal, zstd, xz, proxy_tools, PyObjC) are committed in `assets/licenses/`; the build fails if the app contains a native library without a licence notice.
+
 ## Terminal usage
 
 ```sh
@@ -24,7 +43,7 @@ The terminal version runs on any Python 3.14; the GUI is macOS only. `requiremen
 .venv/bin/python mp3sort.py --source "<source folder>" "<destination folder>"
 ```
 
-Without `--source`, the source folder last chosen in the GUI is used; if there is none, you get an error asking for `--source`. If the source or destination does not exist, you get an error and nothing is done. The destination cannot be inside the source (or the other way round).
+Without `--source`, the source folder last chosen in the GUI is used; if there is none, you get an error asking for `--source`. If the source or destination does not exist or cannot be read (for example because macOS has not been given access to it in System Settings > Privacy & Security), you get an error and nothing is done; sub-folders that cannot be read are skipped and counted in a warning. The destination cannot be inside the source (or the other way round).
 
 The preview has one line per file:
 
@@ -110,7 +129,7 @@ The reasons shown are: `tag and file name differ`; `artist and title swapped?`; 
 
 ### Safe moves
 
-Copy, write the tags on the copy, verify (tags read back, duration unchanged, no APEv2), then delete the original. If anything fails the copy is deleted and the original is left intact. Nothing is ever overwritten: duplicates and conflicts in the destination are skipped (`already exists in destination, not overwritten`). The destination is flat. Only `.mp3` files are processed (recursively); everything else stays in the source, as do hidden files starting with `.`. If the original cannot be deleted after the copy is verified, both remain and it is counted separately (`Copied without deleting original`).
+Copy, write the tags on the copy, verify (tags read back, duration unchanged, no APEv2), flush it to disk, then delete the original. The copy gets the original's modification time and permission bits where the file system allows it (best effort; file flags are not copied). If anything fails the copy is deleted and the original is left intact; in the rare case the copy cannot be deleted either, the message says where it was left. Nothing is ever overwritten: duplicates and conflicts in the destination are skipped (`already exists in destination, not overwritten`). The destination is flat. Only `.mp3` files are processed (recursively); everything else stays in the source, as do hidden files starting with `.`. If the original cannot be deleted after the copy is verified, both remain and it is counted separately (`Copied without deleting original`).
 
 ## Tests and tools
 
@@ -135,3 +154,7 @@ Tools:
 - A `<x> Remix` without parentheses is not fixed automatically; it is flagged for review.
 - The rules are heuristics; doubtful cases are flagged with ⚠ rather than resolved.
 - The GUI is tested on macOS only.
+
+## License
+
+mp3sort is free software, licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later). See [LICENSE](LICENSE).

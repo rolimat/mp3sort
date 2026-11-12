@@ -182,3 +182,16 @@ def test_render_long_destination_capped():
     assert "L" * 80 not in line and "… " in line
     assert line.endswith("320 kbps      [already exists in destination]")
     assert len(line) < 160
+
+
+def test_main_unreadable_source(tmp_path, capsys):
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    src, dest = folders(tmp_path)
+    src.chmod(0)
+    try:
+        assert main([str(dest), "--source", str(src)], input_fn=feed("q")) == 2
+    finally:
+        src.chmod(0o755)
+    assert "permission denied" in capsys.readouterr().out

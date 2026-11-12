@@ -1,0 +1,73 @@
+name: release
+on:
+  push:
+    tags: ["v*.*.*"]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  build:
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - if: github.event_name == 'push'
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_REF_NAME is not on main" >&2; exit 1; }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -r requirements.txt -r requirements-build.txt
+      - run: pytest -q
+      - id: ver
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            v=$(python tools/release_version.py "$GITHUB_REF_NAME")
+          else
+            v=0.0.0
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: bash tools/build_app.sh "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: |
+            dist/*.dmg
+            dist/SOURCE.txt
+          if-no-files-found: error
+          retention-days: 7
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dmg
+          path: dist
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          {
+            echo "Open the dmg and drag mp3sort to Applications."
+            echo
+            echo "The first open is blocked because the app is not notarized: go to System Settings > Privacy & Security and click \"Open Anyway\"."
+            echo
+            echo "Apple Silicon only. Licensed GPL-3.0-or-later."
+            echo
+            cat dist/SOURCE.txt
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg --verify-tag --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --title "mp3sort $VERSION" --notes-file notes.md

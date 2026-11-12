@@ -272,3 +272,73 @@ def test_launcher_main_wiring(monkeypatch, tmp_path):
     assert len(cap["names"]) == 11 and cap["started"]
     (closing,) = win.events.closing
     assert closing() is True
+
+
+@pytest.fixture
+def locked_dir():
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    done = []
+    yield lambda p, mode=0: (p.chmod(mode), done.append(p))
+    for p in done:
+        p.chmod(0o755)
+
+
+@pytest.mark.parametrize("which", ["src", "dst"])
+def test_scan_unreadable_folder_reports_error(env, locked_dir, which):
+    folder = getattr(env, which)
+    locked_dir(folder)
+    r = env.scan()
+    assert not r["ok"] and r["state"]["rows"] == []
+    assert f"cannot read {folder}: permission denied" in r["error"]
+    assert "Privacy & Security" not in r["error"]  # EACCES: plain permission problem
+
+
+def test_scan_macos_privacy_denial_gets_hint(env, monkeypatch):
+    import errno
+    import sorter.scan as sc
+
+    def denied(p):
+        raise PermissionError(errno.EPERM, "Operation not permitted", str(p))
+
+    monkeypatch.setattr(sc.os, "scandir", denied)
+    monkeypatch.setattr(sc.sys, "platform", "darwin")
+    r = env.scan()
+    assert not r["ok"] and f"cannot read {env.src}: permission denied" in r["error"]
+    assert "System Settings > Privacy & Security" in r["error"]
+
+
+def test_scan_source_listable_but_not_searchable(env, locked_dir):
+    locked_dir(env.src, 0o644)
+    r = env.scan()
+    assert not r["ok"] and f"cannot read {env.src}: permission denied" in r["error"]
+
+
+def test_scan_subfolder_listable_but_not_searchable_is_skipped(env, locked_dir):
+    sub = env.src / "sub"
+    sub.mkdir()
+    shutil.copy(audio_path(), sub / "Ana - Bruma.mp3")
+    locked_dir(sub, 0o644)
+    r = env.scan()
+    assert r["state"]["counts"]["tracks"] == 2 and "1 sub-folder could not be read" in r["error"]
+
+
+def test_scan_skips_hidden_system_folders(env, locked_dir):
+    trash = env.src / ".Trashes"
+    (trash / "501").mkdir(parents=True)
+    shutil.copy(audio_path(), trash / "501" / "x.mp3")
+    shutil.copy(audio_path(), env.src / ".hidden.mp3")
+    locked_dir(trash, 0o300)
+    r = env.scan()
+    assert r["ok"] and r["error"] is None and r["state"]["counts"]["tracks"] == 2
+
+
+def test_scan_unreadable_subfolder_is_counted(env, locked_dir):
+    sub = env.src / "sub"
+    sub.mkdir()
+    shutil.copy(audio_path(), sub / "Ana - Bruma.mp3")
+    locked_dir(sub)
+    r = env.scan()
+    assert r["state"]["counts"]["tracks"] == 2
+    assert not r["ok"] and "1 sub-folder could not be read" in r["error"]

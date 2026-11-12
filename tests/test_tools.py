@@ -16,3 +16,366 @@ def test_build_report_totals_and_flagged_first():
     rows = [l for l in lines if l.startswith("| ") and l[2].isdigit()]
     assert "⚠" in rows[0] or "weird" in rows[0]
     assert "weird.mp3" in rows[0]
+
+
+def test_license_file_is_gpl3():
+    text = (Path(__file__).resolve().parent.parent / "LICENSE").read_text()
+    assert text.lstrip().startswith("GNU GENERAL PUBLIC LICENSE")
+    assert "Version 3, 29 June 2007" in text
+
+
+def test_collect_licenses_includes_project_and_mutagen(tmp_path):
+    from tools.collect_licenses import collect_licenses
+
+    collect_licenses(tmp_path)
+    text = (tmp_path / "LICENSE").read_text()
+    assert "GNU GENERAL PUBLIC LICENSE" in text and "Version 3" in text
+    assert any((tmp_path / "third-party" / "mutagen").iterdir())
+    assert (tmp_path / "third-party" / "python" / "LICENSE.txt").exists()
+    assert "github.com/rolimat/mp3sort" in (tmp_path / "SOURCE.txt").read_text()
+
+
+def test_collected_licenses_are_text_and_pyobjc_core_has_real_text(tmp_path):
+    import sys
+    from tools.collect_licenses import collect_licenses
+
+    collect_licenses(tmp_path)
+    for f in (tmp_path / "third-party").rglob("*"):
+        if f.is_file():
+            f.read_text(encoding="utf-8")  # a binary or non-UTF-8 file would raise
+    assert not list(tmp_path.rglob("LICENSE-METADATA.txt"))
+    if sys.platform == "darwin":
+        texts = [f.read_text() for f in (tmp_path / "third-party" / "pyobjc-core").rglob("*") if f.is_file()]
+        assert any("Permission is hereby granted" in t for t in texts)
+
+
+class FakeDist:
+    def __init__(self, root, name, files):
+        self.metadata, self.version, self._root = {"Name": name}, "1.0", root
+        self.files = files
+        for f in files:
+            p = root / f
+            if ".." not in f and not f.startswith("/"):
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"text of {f}")
+
+    def locate_file(self, f):
+        return self._root / f
+
+
+def test_bundled_is_runtime_only():
+    from tools.collect_licenses import _bundled
+
+    names = set(_bundled())
+    assert {"mutagen", "pywebview", "bottle", "proxy_tools", "typing_extensions"} <= names
+    assert not names & {"setuptools", "packaging", "altgraph", "macholib", "pyinstaller-hooks-contrib",
+                        "pytest", "pluggy", "iniconfig"}
+
+
+def test_native_and_override_texts_are_copied(tmp_path):
+    from tools.collect_licenses import collect_licenses
+
+    collect_licenses(tmp_path)
+    tp = tmp_path / "third-party"
+    assert "Apache License" in (tp / "openssl" / "LICENSE.txt").read_text()
+    assert "Redistribution and use" in (tp / "mpdecimal" / "COPYRIGHT.txt").read_text()
+    assert "Zstandard" in (tp / "zstd" / "LICENSE").read_text()
+    assert "Permission to use, copy, modify" in (tp / "xz" / "COPYING.0BSD").read_text()
+    assert "Redistribution and use" in (tp / "proxy_tools" / "LICENSE.txt").read_text()
+
+
+def test_dist_without_license_or_override_fails(tmp_path, monkeypatch):
+    import pytest
+    import tools.collect_licenses as cl
+
+    d = FakeDist(tmp_path / "sp", "nolic", ["nolic/__init__.py"])
+    d.metadata["License"] = "MIT"  # declared licence metadata is not a licence text
+    monkeypatch.setattr(cl, "_bundled", lambda: {"nolic": d})
+    with pytest.raises(SystemExit, match="nolic"):
+        cl.collect_licenses(tmp_path / "out")
+
+
+def test_license_paths_keep_structure_reject_escape_and_collisions(tmp_path, monkeypatch, capsys):
+    import pytest
+    import tools.collect_licenses as cl
+
+    assert str(cl._dest("x-1.dist-info/licenses/vendor/LICENSE")) == "licenses/vendor/LICENSE"
+    assert str(cl._dest("pkg/sub/COPYING")) == "pkg/sub/COPYING"
+    assert cl._dest("../../share/LICENSE") is None and cl._dest("/abs/LICENSE") is None
+    d = FakeDist(tmp_path / "sp", "esc", ["esc-1.dist-info/LICENSE", "../../share/LICENSE"])
+    monkeypatch.setattr(cl, "_bundled", lambda: {"esc": d})
+    cl.collect_licenses(tmp_path / "out")
+    assert (tmp_path / "out/third-party/esc/LICENSE").exists()
+    assert "unsafe license path ../../share/LICENSE" in capsys.readouterr().err
+    d = FakeDist(tmp_path / "sp2", "dup", ["dup-1.dist-info/LICENSE", "LICENSE"])
+    monkeypatch.setattr(cl, "_bundled", lambda: {"dup": d})
+    with pytest.raises(SystemExit, match="map to"):
+        cl.collect_licenses(tmp_path / "out2")
+
+
+def test_python_license_found_in_base_prefix(tmp_path, monkeypatch):
+    import pytest
+    import tools.collect_licenses as cl
+
+    empty, base = tmp_path / "stdlib", tmp_path / "base"
+    empty.mkdir(); base.mkdir()
+    monkeypatch.setattr(cl.sysconfig, "get_paths", lambda: {"stdlib": str(empty)})
+    monkeypatch.setattr(cl.sys, "base_prefix", str(base))
+    with pytest.raises(SystemExit, match="Python license not found"):
+        cl._python_license()
+    (base / "LICENSE.txt").write_text("PSF")
+    assert cl._python_license() == base / "LICENSE.txt"
+
+
+def test_source_offer_lists_tag_and_versions(tmp_path):
+    from importlib import metadata
+    from tools.collect_licenses import collect_licenses
+
+    collect_licenses(tmp_path, "1.2.3")
+    t = (tmp_path / "SOURCE.txt").read_text()
+    assert "https://github.com/rolimat/mp3sort/tree/v1.2.3" in t
+    v = metadata.version("mutagen")
+    assert f"mutagen {v}: https://pypi.org/project/mutagen/{v}/#files" in t
+    assert "The complete corresponding source code is available at the URLs above." in t
+    assert ("The licence texts are in the licenses folder of the dmg and inside mp3sort.app "
+            "(Contents/Resources/licenses).") in t
+    collect_licenses(tmp_path / "dev")
+    assert "/tree/main" in (tmp_path / "dev" / "SOURCE.txt").read_text()
+
+
+def test_check_bundle_fails_on_unknown_native(tmp_path):
+    from tools.collect_licenses import unknown_native
+
+    c = tmp_path / "x.app" / "Contents"
+    fw = c / "Frameworks"
+    (c / "Resources/licenses/third-party/openssl").mkdir(parents=True)
+    (c / "Resources/licenses/third-party/python").mkdir()
+    (fw / "python3__dot__14/lib-dynload").mkdir(parents=True)
+    (fw / "python3__dot__14/lib-dynload/_ssl.cpython-314-darwin.so").write_bytes(b"\xcf\xfa\xed\xfe")
+    (fw / "libssl.3.dylib").write_bytes(b"\xcf\xfa\xed\xfe")
+    (fw / "Python.framework").mkdir()
+    (fw / "libpython3.14.dylib").write_bytes(b"\xcf\xfa\xed\xfe")
+    (c / "Resources/libssl.3.dylib").symlink_to(fw / "libssl.3.dylib")
+    (fw / "data.bin").write_bytes(b"nope")
+    assert unknown_native(tmp_path / "x.app") == []
+    (fw / "libfoo.1.dylib").write_bytes(b"\xcf\xfa\xed\xfe")
+    (fw / "helper").write_bytes(b"\xca\xfe\xba\xbe")
+    (fw / "mystery").mkdir()
+    (fw / "mystery/_x.cpython-314-darwin.so").write_bytes(b"\xcf\xfa\xed\xfe")
+    assert sorted(unknown_native(tmp_path / "x.app")) == ["Frameworks/helper", "Frameworks/libfoo.1.dylib",
+                                                          "Frameworks/mystery/_x.cpython-314-darwin.so"]
+
+
+def test_license_regex_rejects_binaries_and_keeps_nested_paths():
+    from tools.collect_licenses import LICENSE_RE
+
+    assert LICENSE_RE.search("PyObjCTest/copying.cpython-314-darwin.so") is None
+    assert LICENSE_RE.search("x.dist-info/licenses/vendor/LICENSE.txt")
+    assert LICENSE_RE.search("x.dist-info/COPYING")
+
+
+def test_version_from_tag():
+    import subprocess
+    import pytest
+    from tools.release_version import version_from_tag
+
+    assert version_from_tag("v1.0.0") == "1.0.0"
+    assert version_from_tag("v12.3.45") == "12.3.45"
+    for bad in ("v1.0", "1.0.0", "v1.0.0-rc1", "", "v\u0661.\u0662.\u0663"):
+        with pytest.raises(ValueError):
+            version_from_tag(bad)
+    script = Path(__file__).resolve().parent.parent / "tools" / "release_version.py"
+    r = subprocess.run([sys.executable, str(script), "v1.0"], capture_output=True, text=True)
+    assert r.returncode == 2 and "invalid tag: v1.0" in r.stderr
+    r = subprocess.run([sys.executable, str(script), "v1.2.3"], capture_output=True, text=True)
+    assert r.stdout.strip() == "1.2.3"
+
+
+def _workflow_problems(t: str) -> list[str]:
+    """Structural guards for release.yml (line based, no YAML parser needed)."""
+    import re
+
+    lines, bad = t.splitlines(), []
+    indent = lambda l: len(l) - len(l.lstrip())
+    for n, line in enumerate(lines):  # a run: block is its line plus the deeper-indented lines after it
+        if line.lstrip().startswith(("run:", "- run:")):
+            block = [line]
+            for nxt in lines[n + 1:]:
+                if nxt.strip() and indent(nxt) <= indent(line):
+                    break
+                block.append(nxt)
+            if any("${{" in b for b in block):
+                bad.append(f"expression in run block at line {n + 1}")
+    jobs = {}
+    for n, line in enumerate(lines):
+        if indent(line) == 2 and line.rstrip().endswith(":") and lines.index("jobs:") < n:
+            jobs[line.strip()[:-1]] = n
+    starts = sorted(jobs.values()) + [len(lines)]
+    r0 = jobs.get("release", -1)
+    r1 = starts[starts.index(r0) + 1] if r0 >= 0 else -1
+    rel = lines[r0:r1] if r0 >= 0 else []
+    code = [(n, l.split("#", 1)[0]) for n, l in enumerate(lines)]
+    if any("write-all" in l for _, l in code):
+        bad.append("write-all permission")
+    writes = [n for n, l in code if re.search(r"^\s*[\w-]+:\s*write\s*$", l)]
+    if "      contents: write" not in rel or any(not r0 <= n < r1 for n in writes):
+        bad.append("write permission outside the release job")
+    if any(re.search(r"^\s*(-\s*)?if:\s*(false|\$\{\{\s*false\s*\}\})\s*$", l) for _, l in code):
+        bad.append("disabled step or job (if: false)")
+    guard = r"^    if: (startsWith\(github\.ref, 'refs/tags/v'\)|\$\{\{ startsWith\(github\.ref, 'refs/tags/v'\) \}\})$"
+    if not any(re.search(guard, l) for l in rel):
+        bad.append("release job not limited to tags")
+    create = [l for l in rel if l.strip().startswith("gh release create")]
+    if not create or '--repo "$GITHUB_REPOSITORY"' not in create[0]:
+        bad.append("gh release create without --repo")
+    if not create or "--verify-tag" not in create[0]:
+        bad.append("gh release create without --verify-tag")
+    return bad
+
+
+def _build_problems(sh: str) -> list[str]:
+    bad = []
+    if "set -euo pipefail" not in [l.strip() for l in sh.splitlines()]:
+        bad.append("build script does not stop on errors")
+    if '"$PY" tools/collect_licenses.py --check-bundle "$APP"' not in [l.strip() for l in sh.splitlines()]:
+        bad.append("licence check of the bundle is not an active command")
+    return bad
+
+
+def test_release_workflow():
+    import re
+
+    root = Path(__file__).resolve().parent.parent
+    t = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    for needle in ('tags: ["v*.*.*"]', "pull_request:", "macos-latest", 'python-version: "3.14"',
+                   "pytest -q", "tools/build_app.sh", "gh release create", "fetch-depth: 0",
+                   'git merge-base --is-ancestor "$GITHUB_SHA" origin/main', "retention-days: 7",
+                   "group: release-${{ github.ref }}",
+                   "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", "cat dist/SOURCE.txt",
+                   '--target "$GITHUB_SHA"'):
+        assert needle in t, needle
+    assert "--clobber" not in t and "--draft" not in t
+    assert set(re.findall(r"secrets\.\w+", t)) == {"secrets.GITHUB_TOKEN"}
+    assert re.search(r"^permissions:\n  contents: read$", t, re.M)
+    assert _workflow_problems(t) == []
+    guard = "    if: startsWith(github.ref, 'refs/tags/v')"
+    # the equivalent expression form is fine
+    assert _workflow_problems(t.replace(guard, "    if: ${{ startsWith(github.ref, 'refs/tags/v') }}")) == []
+    # each bypass found in review must be caught
+    mutated = {
+        "expression in run block": t.replace('echo "version=$v"', 'echo "${{ github.head_ref }}"\n          echo "version=$v"'),
+        "write permission outside": t.replace("permissions:\n  contents: read", "permissions:\n  contents: write", 1)
+                                    .replace("      contents: write", "      contents: read"),
+        "write-all permission": t.replace("permissions:\n  contents: read", "permissions: write-all", 1),
+        "write permission outside ": t.replace("permissions:\n  contents: read", "permissions:\n  contents: read\n  packages: write", 1),
+        "disabled step": t.replace("      - if: github.event_name == 'push'", "      - if: false"),
+        "disabled step ": t.replace("      - run: pytest -q", "      - if: ${{ false }}\n        run: pytest -q"),
+        "not limited to tags": t.replace(guard + "\n", ""),
+        "not limited to tags ": t.replace(guard, "    # " + guard.strip()),
+        "without --repo": t.replace('--repo "$GITHUB_REPOSITORY" ', ""),
+        "without --verify-tag": t.replace("--verify-tag ", ""),
+    }
+    for problem, text in mutated.items():
+        assert text != t, problem
+        assert any(problem.strip() in p for p in _workflow_problems(text)), problem
+    sh = (root / "tools" / "build_app.sh").read_text()
+    line = '"$PY" tools/collect_licenses.py --check-bundle "$APP"'
+    assert _build_problems(sh) == []
+    for text in (sh.replace(line, "# " + line), sh.replace(line, line + " || true"),
+                 sh.replace(line, line + " || echo skipped"), sh.replace("set -euo pipefail", "set -uo pipefail")):
+        assert text != sh and _build_problems(text)
+
+
+def _fake_repo(tmp_path, spec=True):
+    import shutil
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    shutil.copy(Path(__file__).resolve().parent.parent / "tools" / "build_app.sh", repo / "tools")
+    (repo / "build").mkdir()
+    (repo / "dist").mkdir()
+    (repo / "sorter").mkdir()
+    if spec:
+        (repo / "mp3sort.spec").write_text("")
+    return repo
+
+
+def _run_build(repo, env_extra, cwd):
+    import os
+    import subprocess
+    env = {**os.environ, "CDPATH": str(cwd), **env_extra}
+    return subprocess.run(["bash", str(repo / "tools" / "build_app.sh"), "0.0.0"], cwd=cwd,
+                          capture_output=True, text=True, env=env)
+
+
+def test_build_script_checks_pyinstaller_before_deleting(tmp_path):
+    repo = _fake_repo(tmp_path)
+    fake = tmp_path / "nopyi"
+    fake.write_text('#!/bin/sh\nexit 1\n')
+    fake.chmod(0o755)
+    r = _run_build(repo, {"PYTHON": str(fake)}, tmp_path)
+    assert r.returncode == 1 and "PyInstaller not found" in r.stderr
+    assert (repo / "build").is_dir() and (repo / "dist").is_dir()
+
+
+def test_build_script_refuses_outside_the_repo(tmp_path):
+    repo = _fake_repo(tmp_path, spec=False)
+    r = _run_build(repo, {"PYTHON": "/bin/false"}, tmp_path)
+    assert r.returncode == 1 and "not the mp3sort repo" in r.stderr
+    assert (repo / "build").is_dir() and (repo / "dist").is_dir()
+
+
+def test_build_script_rules():
+    root = Path(__file__).resolve().parent.parent
+    sh = (root / "tools" / "build_app.sh").read_text()
+    assert 'rm -rf "$ROOT/build" "$ROOT/dist"' in sh and "unset CDPATH" in sh
+    assert sh.index('import PyInstaller') < sh.index("rm -rf")
+    assert "for try in 1 2 3" in sh and "--check-bundle" in sh
+    assert sh.index('if [ -n "${PYTHON:-}" ]') < sh.index('cd "$ROOT"')
+    spec = (root / "mp3sort.spec").read_text()
+    assert 'os.environ["MP3SORT_MINOS"]' in spec and '"13.0"' not in spec
+
+
+def test_override_dot_files_are_not_copied(tmp_path, monkeypatch):
+    import shutil
+    import tools.collect_licenses as cl
+
+    ov = tmp_path / "ov"
+    shutil.copytree(cl.OVERRIDES, ov)
+    (ov / "zstd" / ".DS_Store").write_bytes(b"\0\x01binary")
+    (ov / "zstd" / ".git").mkdir()
+    (ov / "zstd" / ".git" / "x").write_text("x")
+    monkeypatch.setattr(cl, "OVERRIDES", ov)
+    cl.collect_licenses(tmp_path / "out")
+    assert sorted(p.name for p in (tmp_path / "out/third-party/zstd").iterdir()) == ["LICENSE"]
+
+
+def test_build_script_resolves_relative_python_from_caller_cwd(tmp_path):
+    repo = _fake_repo(tmp_path)
+    fake = tmp_path / "nopyi"
+    fake.write_text("#!/bin/sh\nexit 1\n")
+    fake.chmod(0o755)
+    r = _run_build(repo, {"PYTHON": "./nopyi"}, tmp_path)
+    assert r.returncode == 1 and f"PyInstaller not found for {fake.resolve()}" in r.stderr
+    r = _run_build(repo, {"PYTHON": "./missing/python"}, tmp_path)
+    assert r.returncode == 1 and "PYTHON not found or not executable: ./missing/python" in r.stderr
+    assert (repo / "build").is_dir() and (repo / "dist").is_dir()
+
+
+def test_make_icon_refuses_outside_the_repo(tmp_path):
+    import os
+    import shutil
+    import subprocess
+
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    shutil.copy(Path(__file__).resolve().parent.parent / "tools" / "make_icon.sh", repo / "tools")
+    r = subprocess.run(["bash", str(repo / "tools" / "make_icon.sh")], cwd=tmp_path, capture_output=True,
+                       text=True, env={**os.environ, "CDPATH": str(tmp_path)})
+    assert r.returncode == 1 and "not the mp3sort repo" in r.stderr
+    sh = (repo / "tools" / "make_icon.sh").read_text()
+    assert "unset CDPATH" in sh and "cd -P" in sh
+
+
+def test_spec_has_network_volumes_usage():
+    spec = (Path(__file__).resolve().parent.parent / "mp3sort.spec").read_text()
+    assert '"NSNetworkVolumesUsageDescription": why' in spec
