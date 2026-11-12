@@ -33,3 +33,23 @@ def test_collect_licenses_includes_project_and_mutagen(tmp_path):
     assert any((tmp_path / "third-party" / "mutagen").iterdir())
     assert (tmp_path / "third-party" / "python" / "LICENSE.txt").exists()
     assert "github.com/rolimat/mp3sort" in (tmp_path / "SOURCE.txt").read_text()
+
+
+def test_collected_licenses_are_text_and_pyobjc_core_uses_metadata(tmp_path):
+    import sys
+    from tools.collect_licenses import collect_licenses
+
+    collect_licenses(tmp_path)
+    for f in (tmp_path / "third-party").rglob("*"):
+        if f.is_file():
+            f.read_text(encoding="utf-8")  # a binary or non-UTF-8 file would raise
+    if sys.platform == "darwin":
+        assert (tmp_path / "third-party" / "pyobjc-core" / "LICENSE-METADATA.txt").exists()
+
+
+def test_license_regex_rejects_binaries_and_keeps_nested_paths():
+    from tools.collect_licenses import LICENSE_RE
+
+    assert LICENSE_RE.search("PyObjCTest/copying.cpython-314-darwin.so") is None
+    assert LICENSE_RE.search("x.dist-info/licenses/vendor/LICENSE.txt")
+    assert LICENSE_RE.search("x.dist-info/COPYING")

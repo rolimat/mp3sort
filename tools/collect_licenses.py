@@ -10,7 +10,7 @@ from packaging.requirements import Requirement
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_URL = "https://github.com/rolimat/mp3sort"
-LICENSE_RE = re.compile(r"(^|/)(licen[cs]e|copying|notice)[^/]*$", re.I)
+LICENSE_RE = re.compile(r"(^|/)(licen[cs]e|copying|notice)(\.[a-z]+)?$", re.I)
 
 
 def _bundled() -> dict:
@@ -47,7 +47,10 @@ def collect_licenses(out: Path) -> list[Path]:
     put(ROOT / "LICENSE", out / "LICENSE")
     (out / "SOURCE.txt").write_text(SOURCE_URL + "\n")
     written.append(out / "SOURCE.txt")
-    put(Path(sysconfig.get_paths()["stdlib"]) / "LICENSE.txt", out / "third-party/python/LICENSE.txt")
+    py_lic = Path(sysconfig.get_paths()["stdlib"]) / "LICENSE.txt"
+    if not py_lic.is_file():
+        raise SystemExit(f"Python license not found: {py_lic}")
+    put(py_lic, out / "third-party/python/LICENSE.txt")
 
     missing = []
     for name, dist in sorted(_bundled().items()):
@@ -61,11 +64,14 @@ def collect_licenses(out: Path) -> list[Path]:
                 continue
             dst = out / "third-party" / name / "LICENSE-METADATA.txt"
             dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_text(f"{name} {dist.version}\nLicense: {lic}\nAuthor: {dist.metadata['Author'] or dist.metadata['Author-email']}\n"
-                           f"Home-page: {dist.metadata['Home-page']}\n(no license file shipped in the distribution)\n")
+            author = dist.metadata.get("Author") or dist.metadata.get("Author-email") or ""
+            dst.write_text(f"{name} {dist.version}\nLicense: {lic}\nAuthor: {author}\n"
+                           f"Home-page: {dist.metadata.get('Home-page') or ''}\n(no license file shipped in the distribution)\n")
+            print(f"note: {name} ships no license file; wrote LICENSE-METADATA.txt from metadata", file=sys.stderr)
             written.append(dst)
         for f in files:
-            put(Path(dist.locate_file(f)), out / "third-party" / name / Path(str(f)).name)
+            rel = str(f).split(".dist-info/", 1)[-1]  # keep licenses/vendor/LICENSE distinct from licenses/LICENSE
+            put(Path(dist.locate_file(f)), out / "third-party" / name / rel)
     if missing:
         raise SystemExit("no license file for: " + ", ".join(missing))
     return written
