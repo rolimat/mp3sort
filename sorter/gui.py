@@ -10,14 +10,20 @@ from sorter.gui_model import Model, load_settings
 WEB = Path(__file__).parent / "web"
 
 
+def _webview_js() -> Path:
+    import webview
+    return Path(webview.__file__).parent / "js"  # pywebview injects these into the page
+
+
 def self_check() -> int:
     """Verify the bundle's assets and imports without opening a window."""
     try:
         for name in ("index.html", "app.css", "app.js"):
             if not (WEB / name).is_file():
                 raise FileNotFoundError(f"missing web asset: {WEB / name}")
-        import webview  # noqa: F401
-        import mutagen  # noqa: F401
+        js = _webview_js()
+        if not any(js.glob("*.js")):
+            raise FileNotFoundError(f"missing pywebview js files in {js}")
 
         if sys.platform == "darwin":
             import webview.platforms.cocoa  # noqa: F401
