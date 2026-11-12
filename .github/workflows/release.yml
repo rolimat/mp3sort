@@ -70,4 +70,4 @@ jobs:
             echo
             cat dist/SOURCE.txt
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg --repo "$GITHUB_REPOSITORY" --title "mp3sort $VERSION" --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg --verify-tag --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --title "mp3sort $VERSION" --notes-file notes.md

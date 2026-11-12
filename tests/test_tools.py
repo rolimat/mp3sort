@@ -193,6 +193,8 @@ def test_version_from_tag():
 
 def _workflow_problems(t: str) -> list[str]:
     """Structural guards for release.yml (line based, no YAML parser needed)."""
+    import re
+
     lines, bad = t.splitlines(), []
     indent = lambda l: len(l) - len(l.lstrip())
     for n, line in enumerate(lines):  # a run: block is its line plus the deeper-indented lines after it
@@ -209,43 +211,79 @@ def _workflow_problems(t: str) -> list[str]:
         if indent(line) == 2 and line.rstrip().endswith(":") and lines.index("jobs:") < n:
             jobs[line.strip()[:-1]] = n
     starts = sorted(jobs.values()) + [len(lines)]
-    rel = lines[jobs["release"]:starts[starts.index(jobs["release"]) + 1]] if "release" in jobs else []
-    writes = [n for n, l in enumerate(lines) if "contents: write" in l]
-    if not writes or any(not (jobs.get("release", -1) <= n < jobs.get("release", -1) + len(rel)) for n in writes):
-        bad.append("contents: write outside the release job")
-    if "    if: startsWith(github.ref, 'refs/tags/v')" not in rel:
+    r0 = jobs.get("release", -1)
+    r1 = starts[starts.index(r0) + 1] if r0 >= 0 else -1
+    rel = lines[r0:r1] if r0 >= 0 else []
+    code = [(n, l.split("#", 1)[0]) for n, l in enumerate(lines)]
+    if any("write-all" in l for _, l in code):
+        bad.append("write-all permission")
+    writes = [n for n, l in code if re.search(r"^\s*[\w-]+:\s*write\s*$", l)]
+    if "      contents: write" not in rel or any(not r0 <= n < r1 for n in writes):
+        bad.append("write permission outside the release job")
+    if any(re.search(r"^\s*(-\s*)?if:\s*(false|\$\{\{\s*false\s*\}\})\s*$", l) for _, l in code):
+        bad.append("disabled step or job (if: false)")
+    guard = r"^    if: (startsWith\(github\.ref, 'refs/tags/v'\)|\$\{\{ startsWith\(github\.ref, 'refs/tags/v'\) \}\})$"
+    if not any(re.search(guard, l) for l in rel):
         bad.append("release job not limited to tags")
-    if not any("gh release create" in l and '--repo "$GITHUB_REPOSITORY"' in l for l in rel):
+    create = [l for l in rel if l.strip().startswith("gh release create")]
+    if not create or '--repo "$GITHUB_REPOSITORY"' not in create[0]:
         bad.append("gh release create without --repo")
+    if not create or "--verify-tag" not in create[0]:
+        bad.append("gh release create without --verify-tag")
+    return bad
+
+
+def _build_problems(sh: str) -> list[str]:
+    bad = []
+    if "set -euo pipefail" not in [l.strip() for l in sh.splitlines()]:
+        bad.append("build script does not stop on errors")
+    if '"$PY" tools/collect_licenses.py --check-bundle "$APP"' not in [l.strip() for l in sh.splitlines()]:
+        bad.append("licence check of the bundle is not an active command")
     return bad
 
 
 def test_release_workflow():
     import re
 
-    wf = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
-    t = wf.read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parent.parent
+    t = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     for needle in ('tags: ["v*.*.*"]', "pull_request:", "macos-latest", 'python-version: "3.14"',
                    "pytest -q", "tools/build_app.sh", "gh release create", "fetch-depth: 0",
                    'git merge-base --is-ancestor "$GITHUB_SHA" origin/main', "retention-days: 7",
                    "group: release-${{ github.ref }}",
-                   "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", "cat dist/SOURCE.txt"):
+                   "cancel-in-progress: ${{ github.event_name == 'pull_request' }}", "cat dist/SOURCE.txt",
+                   '--target "$GITHUB_SHA"'):
         assert needle in t, needle
     assert "--clobber" not in t and "--draft" not in t
     assert set(re.findall(r"secrets\.\w+", t)) == {"secrets.GITHUB_TOKEN"}
     assert re.search(r"^permissions:\n  contents: read$", t, re.M)
     assert _workflow_problems(t) == []
-    # each bypass found in review must now be caught
+    guard = "    if: startsWith(github.ref, 'refs/tags/v')"
+    # the equivalent expression form is fine
+    assert _workflow_problems(t.replace(guard, "    if: ${{ startsWith(github.ref, 'refs/tags/v') }}")) == []
+    # each bypass found in review must be caught
     mutated = {
         "expression in run block": t.replace('echo "version=$v"', 'echo "${{ github.head_ref }}"\n          echo "version=$v"'),
-        "contents: write outside": t.replace("permissions:\n  contents: read", "permissions:\n  contents: write", 1)
-                                   .replace("      contents: write", "      contents: read"),
-        "not limited to tags": t.replace("    if: startsWith(github.ref, 'refs/tags/v')\n", ""),
+        "write permission outside": t.replace("permissions:\n  contents: read", "permissions:\n  contents: write", 1)
+                                    .replace("      contents: write", "      contents: read"),
+        "write-all permission": t.replace("permissions:\n  contents: read", "permissions: write-all", 1),
+        "write permission outside ": t.replace("permissions:\n  contents: read", "permissions:\n  contents: read\n  packages: write", 1),
+        "disabled step": t.replace("      - if: github.event_name == 'push'", "      - if: false"),
+        "disabled step ": t.replace("      - run: pytest -q", "      - if: ${{ false }}\n        run: pytest -q"),
+        "not limited to tags": t.replace(guard + "\n", ""),
+        "not limited to tags ": t.replace(guard, "    # " + guard.strip()),
         "without --repo": t.replace('--repo "$GITHUB_REPOSITORY" ', ""),
+        "without --verify-tag": t.replace("--verify-tag ", ""),
     }
     for problem, text in mutated.items():
         assert text != t, problem
-        assert any(problem in p for p in _workflow_problems(text)), problem
+        assert any(problem.strip() in p for p in _workflow_problems(text)), problem
+    sh = (root / "tools" / "build_app.sh").read_text()
+    line = '"$PY" tools/collect_licenses.py --check-bundle "$APP"'
+    assert _build_problems(sh) == []
+    for text in (sh.replace(line, "# " + line), sh.replace(line, line + " || true"),
+                 sh.replace(line, line + " || echo skipped"), sh.replace("set -euo pipefail", "set -uo pipefail")):
+        assert text != sh and _build_problems(text)
 
 
 def _fake_repo(tmp_path, spec=True):
