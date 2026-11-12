@@ -7,7 +7,7 @@ from conftest import audio_path
 
 from pathlib import Path
 
-from sorter.gui_api import ApiImpl, js_api
+from sorter.gui_api import ApiImpl, exposed
 from sorter.gui_model import Row
 from sorter.scan import Item
 from sorter.gui_model import Model, load_settings
@@ -131,33 +131,33 @@ NAMES = {"state", "choose", "pending_edits", "scan", "edit", "toggle", "reset", 
          "can_close", "set_editing"}
 
 
-def test_facade_exposes_only_api(env):
-    f = js_api(env)
-    assert {n for n in dir(f) if not n.startswith("_")} == NAMES
-    assert not hasattr(f, "__dict__") or not vars(f)
-    env.scan()
-    bad = (Model, Row, Item, Path, ApiImpl)
-    seen = 0
-
-    def walk(obj, depth):
-        nonlocal seen
-        for n in dir(obj):
-            if n.startswith("_"):
-                continue
-            try:
-                v = getattr(obj, n)
-            except Exception:
-                continue
-            seen += 1
-            assert not isinstance(v, bad), n
-            if depth < 4:
-                walk(v, depth + 1)
-    walk(f, 1)
-    assert seen
+def _nested(obj, attr_str):  # copy of pywebview.util get_nested_attribute
+    for attr in attr_str.split("."):
+        obj = getattr(obj, attr, None)
+        if obj is None:
+            return None
+    return obj
 
 
-def test_facade_behaves_like_impl(env):
-    f = js_api(env)
+def test_exposed_exact_names_and_dispatch(env):
+    fs = exposed(env)
+    assert {f.__name__ for f in fs} == NAMES and len(fs) == len(NAMES)
+    funcs = {f.__name__: f for f in fs}
+
+    def resolve(name):  # pywebview util.py: _functions.get(name) or nested(js_api=None, name)
+        return funcs.get(name) or _nested(None, name)
+    for n in NAMES:
+        assert resolve(n) is funcs[n]
+    for n in ("state.__globals__", "state.__globals__.update", "state.__builtins__",
+              "state.__closure__", "__class__.__base__.__subclasses__",
+              "__class__.__init_subclass__", "state.__code__", "model", "_impl"):
+        r = resolve(n)
+        assert r is None or not hasattr(r, "__globals__"), n
+
+
+def test_exposed_behaves_like_impl(env):
+    f = {g.__name__: g for g in exposed(env)}
+    f = type('F', (), f)
     assert f.scan()["state"]["counts"]["tracks"] == 2
     assert f.edit(0, "artist", "Zed")["ok"] and f.pending_edits() == 1
     assert f.edit(9, "artist", "x")["ok"] is False

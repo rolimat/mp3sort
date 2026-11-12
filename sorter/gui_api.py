@@ -1,4 +1,8 @@
-"""JSON-only API for the web UI. Everything from the page is untrusted: validate before use."""
+"""JSON-only API for the web UI. Everything from the page is untrusted: validate before use.
+
+Launcher requirement: webview.create_window(..., js_api=None), then window.expose(*exposed(impl)).
+Never pass an object as js_api: pywebview walks dotted names with getattr (reaches __globals__).
+"""
 import threading
 from pathlib import Path
 
@@ -139,17 +143,36 @@ class ApiImpl:
             self._push("done", data)
 
 
-_NAMES = ("state", "choose", "pending_edits", "scan", "edit", "toggle", "reset", "move",
-          "can_close", "set_editing")
+def exposed(impl: ApiImpl) -> list:
+    """Plain functions for window.expose(); pywebview registers each by __name__."""
+    def state():
+        return impl.state()
 
+    def choose(kind):
+        return impl.choose(kind)
 
-def js_api(impl: ApiImpl) -> object:
-    """Facade for pywebview: no instance attributes, nothing reachable but the call closures."""
-    def make(name):
-        f = getattr(impl, name)
+    def pending_edits():
+        return impl.pending_edits()
 
-        def call(*a, **k):
-            return f(*a, **k)
-        call.__name__ = name
-        return staticmethod(call)
-    return type("Api", (), {"__slots__": (), **{n: make(n) for n in _NAMES}})()
+    def scan():
+        return impl.scan()
+
+    def edit(i, field, value):
+        return impl.edit(i, field, value)
+
+    def toggle(i):
+        return impl.toggle(i)
+
+    def reset(i):
+        return impl.reset(i)
+
+    def move():
+        return impl.move()
+
+    def can_close():
+        return impl.can_close()
+
+    def set_editing(on):
+        return impl.set_editing(on)
+
+    return [state, choose, pending_edits, scan, edit, toggle, reset, move, can_close, set_editing]
