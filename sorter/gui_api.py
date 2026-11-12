@@ -3,6 +3,7 @@
 Launcher requirement: webview.create_window(..., js_api=None), then window.expose(*exposed(impl)).
 Never pass an object as js_api: pywebview walks dotted names with getattr (reaches __globals__).
 """
+import logging
 import threading
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from sorter.apply import FIELDS
 from sorter.gui_model import Model, save_settings
 
 MAX_VALUE = 500
+log = logging.getLogger(__name__)
 
 
 class ApiImpl:
@@ -56,6 +58,21 @@ class ApiImpl:
 
     def can_close(self) -> bool:
         return not self._busy()
+
+    def strip(self, i) -> dict:
+        if err := self._index(i):
+            return self._res(err)
+        try:
+            info = self.model.strip(i)
+        except Exception as e:
+            return self._res(str(e) or type(e).__name__)
+        return {**self._res(), "strip": info}
+
+    def _send(self, event: str, data: dict) -> None:
+        try:
+            self._push(event, data)
+        except Exception:  # a failing page must never abort a move or skip "done"
+            log.exception("push %s failed", event)
 
     def pending_edits(self) -> int:
         return self.model.edited_count()
@@ -123,7 +140,7 @@ class ApiImpl:
     def _run_move(self, names: list[str]) -> None:
         data: dict = {"results": [], "summary": "", "error": None}
         try:
-            out = self.model.move(lambda i, n: self._push("progress", {"i": i, "n": n, "name": names[i - 1]}))
+            out = self.model.move(lambda i, n: self._send("progress", {"i": i, "n": n, "name": names[i - 1]}))
             if isinstance(out, str):
                 data["error"] = out
             else:
@@ -140,7 +157,7 @@ class ApiImpl:
                 data["state"] = self._state()
             except Exception as e:
                 data["state"], data["error"] = None, data["error"] or str(e)
-            self._push("done", data)
+            self._send("done", data)
 
 
 def exposed(impl: ApiImpl) -> list:
@@ -172,7 +189,10 @@ def exposed(impl: ApiImpl) -> list:
     def can_close():
         return impl.can_close()
 
+    def strip(i):
+        return impl.strip(i)
+
     def set_editing(on):
         return impl.set_editing(on)
 
-    return [state, choose, pending_edits, scan, edit, toggle, reset, move, can_close, set_editing]
+    return [state, choose, pending_edits, scan, edit, toggle, reset, move, can_close, set_editing, strip]

@@ -24,7 +24,8 @@ def test_no_remote_urls_or_sinks():
 
 def test_csp_and_local_assets_only():
     html = (WEB / "index.html").read_text()
-    assert ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:") in html
+    assert ("default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data:") in html
+    assert "unsafe-inline" not in html  # pywebview's bridge needs eval/new Function, nothing else
     assert "Content-Security-Policy" in html
     assert 'src="app.js"' in html and 'href="app.css"' in html
 

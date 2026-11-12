@@ -9,7 +9,9 @@ let cur = -1;          // row shown in the strip
 let ed = null;         // open editor: {i, field, input, err, orig, pending, cell}
 let moving = null;     // {i, n, name} while a move runs
 let results = null;    // {results, summary, error} after a move
-let note = "";         // status message in the footer
+let note = "";
+let clickRow = null;   // row under the mouse when an open editor loses focus: select it after the commit
+let removed = { i: null, text: "" };  // "Removed" text for the strip row (read-only call)
 
 function h(tag, cls, ...kids) {
   const e = document.createElement(tag);
@@ -31,6 +33,7 @@ const A = {
   toggle: (i) => q(() => pywebview.api.toggle(i)),
   reset: (i) => q(() => pywebview.api.reset(i)),
   move: () => q(() => pywebview.api.move()),
+  strip: (i) => q(() => pywebview.api.strip(i)),
   set_editing: (on) => q(() => pywebview.api.set_editing(on)),
 };
 
@@ -40,6 +43,7 @@ const locked = () => busy() || !!ed;   // controls disabled while moving or edit
 function apply(r) {
   if (r && r.state) {
     S = r.state;
+    removed = { i: null, text: "" };
     if (cur >= S.rows.length) cur = -1;
   }
   note = r && r.error && r.error !== "cancelled" ? r.error : "";
@@ -54,7 +58,11 @@ function confirmDlg(title, body, okLabel) {
     const ok = h("button", "p", okLabel), no = h("button", "", "Cancel");
     ok.addEventListener("click", () => done(true));
     no.addEventListener("click", () => done(false));
-    const key = (e) => { if (e.key === "Escape") { e.preventDefault(); done(false); } };
+    const key = (e) => {   // modal: Esc cancels, Tab cycles inside, Enter only presses the focused button
+      if (e.key === "Escape") { e.preventDefault(); done(false); }
+      else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === ok ? no : ok).focus(); }
+      else if (e.key === "Enter" && document.activeElement !== ok && document.activeElement !== no) { e.preventDefault(); e.stopPropagation(); }
+    };
     document.addEventListener("keydown", key, true);
     m.replaceChildren(h("div", "dlg", txt("", title, "h3"), txt("", body, "p"), h("div", "btns", no, ok)));
     m.hidden = false;
@@ -122,12 +130,13 @@ function row(r, i) {
   });
   const chip = h("td", "");
   if (r.flags.length) { const c = txt("chip cw", "⚠"); c.title = r.flags.join("; "); chip.append(c); }
-  else if (r.chip === "edit") chip.append(txt("chip ce", "✎"));
+  if (r.edited_fields.length) chip.append(txt("chip ce", "✎"));
   const kb = h("td", "num" + (r.low_kbps ? " r" : ""), r.kbps == null ? "—" : String(r.kbps));
   if (r.vbr) kb.append(" ", txt("g", "VBR"));
   const tr = h("tr", (i === cur ? "sel " : "") + (r.low_kbps ? "dim" : ""), h("td", "", cb), chip, txt("g", r.n, "td"),
     ...EDIT.map((f) => cell(r, i, f)), kb);
   tr.dataset.i = i;
+  tr.addEventListener("mousedown", () => { clickRow = i; });
   tr.addEventListener("click", () => {
     if (locked() || cur === i) return;
     cur = i;
@@ -170,13 +179,25 @@ function renderStrip() {
     inp.placeholder = "(empty)";
     inp.disabled = busy();
     const err = h("div", "err");
+    inp.dataset.f = f;
     inp.addEventListener("focus", () => { if (!ed) begin(cur, f, inp, err); });
     inp.addEventListener("keydown", editorKeys);
     inp.addEventListener("blur", onBlur);
     return [txt("lbl", label), h("div", "", inp, err)];
   };
   s.replaceChildren(txt("lbl", "File"), txt("v", r.filename || "—"), ...field("Album", "album"), ...field("Label", "label"),
-    txt("lbl", "From"), txt("v g", r.from), ...field("Comment", "comment"));
+    txt("lbl", "From"), txt("v g", r.from), ...field("Comment", "comment"),
+    txt("lbl", "Removed"), txt("v g wide", removed.i === cur ? removed.text : "\u2026"));
+  if (removed.i !== cur) {
+    const i = cur;
+    removed = { i, text: "" };
+    A.strip(i).then((x) => {
+      if (!x.ok || cur !== i || !S) return;
+      const t = x.strip.removed;
+      removed = { i, text: t.length ? t.join(" \u00B7 ") : "nothing" };
+      if (!ed) renderStrip();
+    });
+  }
 }
 
 function renderFoot() {
@@ -238,21 +259,32 @@ function openCell(i, f) {
 
 function editorKeys(e) {
   if (!ed || e.target !== ed.input) return;
+  if (ed.pending) { e.preventDefault(); return; }   // the screen must match what the server applied
   if (e.key === "Enter") { e.preventDefault(); commit(0); }
   else if (e.key === "Escape") { e.preventDefault(); cancel(); }
   else if (e.key === "Tab" && ed.cell) { e.preventDefault(); commit(e.shiftKey ? -1 : 1); }
 }
 
-function onBlur() {
-  if (!ed || ed.pending) return;
+function onBlur(e) {
+  if (!ed) return;
+  const to = e.relatedTarget && e.relatedTarget.closest("#strip") ? e.relatedTarget.dataset.f : null;
+  if (to) ed.refocus = to;
+  if (ed.pending) return;
   if (ed.input.value !== ed.orig || ed.err.textContent) return commit(0);
   closeUnchanged();
 }
 
+function afterClose(refocus) {
+  if (clickRow !== null) { cur = clickRow; clickRow = null; }
+  render();
+  if (refocus) { const el = $("strip").querySelector(`input[data-f="${refocus}"]`); if (el) el.focus(); }
+}
+
 function closeUnchanged() {
   const wasCell = ed.cell;
+  const refocus = ed.refocus;
   end();
-  if (wasCell) render(); else { renderBar(); renderFoot(); }   // keep the table intact so a click on another row still lands
+  if (wasCell || clickRow !== null) afterClose(refocus); else { renderBar(); renderFoot(); }   // keep the table intact so a click on another row still lands
 }
 
 function cancel() {
@@ -271,10 +303,12 @@ async function commit(dir) {
   if (ed !== e) return;
   if (r.ok) {
     apply(r);
+    const refocus = e.refocus;
     end();
-    render();
+    afterClose(refocus);
     if (next) openCell(...next);
   } else {
+    clickRow = null;
     e.err.textContent = r.error;   // stays open: the invalid value must be fixed or cancelled
     e.input.focus();
   }
@@ -293,9 +327,10 @@ async function move() {
   const edited = sel.filter((r) => r.edited_fields.length).length;
   const body = `To ${S.folders.destination}.` + (edited ? ` ${edited} with edited tags, written as shown.` : "");
   if (!(await confirmDlg(`Move ${sel.length} track${sel.length === 1 ? "" : "s"}?`, body, "Move"))) return;
-  if (!apply(await A.move())) return render();
-  moving = { i: 1, n: sel.length, name: "" };
+  moving = { i: 1, n: sel.length, name: "" };   // before the call: "done" may arrive before it resolves
   render();
+  const r = await A.move();
+  if (!r.ok) { moving = null; apply(r); render(); }
 }
 
 window.onPush = function (event, data) {
@@ -308,6 +343,8 @@ window.onPush = function (event, data) {
     (data.state ? Promise.resolve({ ok: true, state: data.state }) : A.state()).then((r) => { apply(r); note = ""; cur = -1; render(); });
   }
 };
+
+document.addEventListener("mousedown", () => { clickRow = null; }, true);
 
 window.addEventListener("pywebviewready", async () => {
   apply(await A.state());

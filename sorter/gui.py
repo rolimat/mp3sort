@@ -1,5 +1,6 @@
 """pywebview launcher. `webview` is imported only inside main() so importing this module is side-effect free."""
 import json
+import logging
 from pathlib import Path
 
 from sorter.gui_api import ApiImpl, exposed
@@ -19,7 +20,10 @@ def main() -> None:
         return picked[0] if picked else None
 
     def push(event, data):  # data only via json.dumps, never formatted into JS
-        window.evaluate_js("window.onPush(" + json.dumps(event) + "," + json.dumps(data) + ")")
+        try:
+            window.evaluate_js("window.onPush(" + json.dumps(event) + "," + json.dumps(data) + ")")
+        except Exception:  # never let a page error abort a move
+            logging.getLogger(__name__).exception("push %s failed", event)
 
     impl._choose, impl._push = choose_folder, push
     window.expose(*exposed(impl))

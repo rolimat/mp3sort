@@ -128,7 +128,7 @@ def test_busy_blocks(env):
 
 
 NAMES = {"state", "choose", "pending_edits", "scan", "edit", "toggle", "reset", "move",
-         "can_close", "set_editing"}
+         "can_close", "set_editing", "strip"}
 
 
 def _nested(obj, attr_str):  # copy of pywebview.util get_nested_attribute
@@ -214,3 +214,32 @@ def test_set_folder_clears(env):
     env.scan()
     env.model.set_folder("destination", env.dst)
     assert env.model.rows == [] and env.model._existing == set()
+
+
+def test_row_has_from_and_strip(env):
+    env.scan()
+    row = env.state()["state"]["rows"][0]
+    assert row["from"].endswith(".mp3")
+    r = env.strip(0)
+    assert r["ok"] and isinstance(r["strip"]["removed"], list) and r["strip"]["from"] == row["from"]
+    assert env.strip(99)["ok"] is False and env.strip(True)["ok"] is False and env.strip("0")["ok"] is False
+
+
+def test_raising_push_does_not_break_move(env):
+    calls = []
+
+    def bad(ev, data):
+        calls.append(ev)
+        raise RuntimeError("js exception")
+    env._push = bad
+    env.scan()
+    for i, r in enumerate(env.state()["state"]["rows"]):
+        if not r["selected"]:
+            env.toggle(i)
+    assert env.move()["ok"]
+    for _ in range(200):
+        if "done" in calls and not env.model.busy and not env._moving:
+            break
+        threading.Event().wait(0.05)
+    assert "progress" in calls and "done" in calls
+    assert env.can_close() is True and len(list(env.dst.iterdir())) >= 1
