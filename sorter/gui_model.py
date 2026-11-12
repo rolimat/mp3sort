@@ -53,9 +53,6 @@ class Model:
             self.dest = path
         self.rows, self._existing, self._scanned, self._g = [], set(), None, None  # scan required again
 
-    def can_scan(self) -> bool:
-        return bool(self.source and self.dest and not self.busy)
-
     def scan(self) -> str | None:
         if self.busy:
             return "busy"
@@ -66,6 +63,13 @@ class Model:
             self._existing = {name_key(p.name) for p in self.dest.iterdir()}
             self._scanned = (self.source, self.dest)
         return err
+
+    def after_move(self, results) -> None:
+        """Drop rows that left the source, keep the rest (with their edits) and refresh the destination listing."""
+        gone = {id(r) for r, e in results if e is None or e.startswith(COPIED_NOT_DELETED)}
+        self.rows = [r for r in self.rows if id(r) not in gone]
+        self._existing = {name_key(p.name) for p in self.dest.iterdir()}
+        self._g = None
 
     def edit(self, i: int, field: str, value: str) -> str | None:
         if self.busy:

@@ -79,3 +79,15 @@ def test_flags(tmp_path, audio):
     assert r.flags([]) == ["odd characters in artist or title"]
     r.reset()
     assert "tag and file name differ" in r.flags([])
+
+
+@pytest.mark.parametrize("field,v", [("bpm", "١٢٨"), ("year", "٢٠٢٠")])
+def test_edit_refuses_non_ascii_digits(tmp_path, audio, field, v):
+    r = mk(tmp_path, audio)
+    before = r.values[field]
+    assert r.edit(field, v) is not None and r.values[field] == before
+
+
+def test_multi_value_frame_shown_joined(tmp_path, audio):
+    r = mk(tmp_path, audio, tags=[TPUB(encoding=3, text=["One", "Two"])])
+    assert r.suggested["label"] == "One; Two"

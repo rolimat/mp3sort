@@ -243,3 +243,32 @@ def test_raising_push_does_not_break_move(env):
         threading.Event().wait(0.05)
     assert "progress" in calls and "done" in calls
     assert env.can_close() is True and len(list(env.dst.iterdir())) >= 1
+
+
+def test_launcher_main_wiring(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    import sorter.gui as gui
+    cap = {}
+
+    class Closing(list):
+        def __iadd__(self, f):
+            self.append(f)
+            return self
+
+    win = types.SimpleNamespace(events=types.SimpleNamespace(closing=Closing()),
+                                expose=lambda *fs: cap.setdefault("names", {f.__name__ for f in fs}))
+    wv = types.ModuleType("webview")
+    wv.FileDialog = types.SimpleNamespace(FOLDER=1)
+
+    def create_window(title, **kw):
+        cap["kw"] = kw
+        return win
+    wv.create_window, wv.start = create_window, lambda: cap.setdefault("started", True)
+    monkeypatch.setitem(sys.modules, "webview", wv)
+    gui.main()
+    assert cap["kw"]["url"].startswith("file://") and cap["kw"]["js_api"] is None
+    assert len(cap["names"]) == 11 and cap["started"]
+    (closing,) = win.events.closing
+    assert closing() is True

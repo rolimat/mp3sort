@@ -7,14 +7,11 @@ from sorter.apply import FIELDS, FRAME
 from sorter.clean import odd_flag, remix_flag, safe_filename
 from sorter.scan import Item
 
-# Flags that describe where the suggestion came from; dropped once the user edits the row.
-# (The "'(...)' added/missing from file name" flags start with a quote.)
-ORIGIN_FLAGS = ("tag and file name differ", "title contains the artist", "artist and title swapped?",
-                "no tags, taken from file name", "tags unreadable")
+# Collision flags are recomputed by the collection, never taken from the item.
 _COLLISION = ("duplicate of", "already exists")  # recomputed by the collection, not origin flags
 
-_BPM = re.compile(r"^\d{1,3}([.,]\d+)?$")
-_YEAR = re.compile(r"^(19|20)\d\d(-\d\d(-\d\d)?)?$")
+_BPM = re.compile(r"^\d{1,3}([.,]\d+)?$", re.ASCII)
+_YEAR = re.compile(r"^(19|20)\d\d(-\d\d(-\d\d)?)?$", re.ASCII)
 
 
 @dataclass
@@ -69,7 +66,7 @@ def _file_tags(item: Item) -> dict[str, str]:
         tags = ID3(item.src)
     except Exception:
         return {}
-    return {k: str(tags[FRAME[k]]) for k in ("year", "key", "bpm", "label") if FRAME[k] in tags}
+    return {k: "; ".join(map(str, tags[FRAME[k]].text)) for k in ("year", "key", "bpm", "label") if FRAME[k] in tags}
 
 
 def row_from_item(item: Item) -> Row:

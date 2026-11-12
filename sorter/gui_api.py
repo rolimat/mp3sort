@@ -144,11 +144,9 @@ class ApiImpl:
             if isinstance(out, str):
                 data["error"] = out
             else:
-                pos = {id(r): n for n, r in enumerate(self.model.rows, 1)}
-                data["results"] = [{"n": pos[id(r)], "filename": r.filename(), "error": e} for r, e in out]
+                data["results"] = [{"filename": r.filename(), "error": e} for r, e in out]
                 data["summary"] = self.model.summary(out)
-                if out:  # destination listing is stale now
-                    data["error"] = self.model.scan()
+                self.model.after_move(out)  # keeps unmoved rows with their edits
         except Exception as e:
             data["error"] = str(e) or type(e).__name__
         finally:

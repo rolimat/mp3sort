@@ -15,7 +15,7 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt   # mutagen, pytest, pywebview
 ```
 
-Any Python 3.14 works. `requirements.txt` also installs `pywebview` and the macOS libraries it needs, so the GUI runs from the same venv as the terminal version; no extra system packages are required.
+The terminal version runs on any Python 3.14; the GUI is macOS only. `requirements.txt` also installs `pywebview` and the macOS libraries it needs, so the GUI runs from the same venv as the terminal version; no extra system packages are required.
 
 ## Terminal usage
 
@@ -84,7 +84,7 @@ Once a row has been edited, the warnings that describe where the suggestion came
 
 - While a cell or strip field is open (or holds a value that failed validation), `Move`, `Scan`, `Choose…` and `↺ Reset row` are disabled: save with Enter or cancel with Esc first.
 - `Scan` and `Choose…` ask for confirmation (`Discard N edited tracks?`) when there are unsaved edits, since they are lost when the folders are scanned again.
-- While files are being moved, the table, the strip and the folder controls are disabled and the window cannot be closed, either with the window button or with Cmd+Q; both go through the same check and are refused until the move finishes (handled through the window's close check; reported by pywebview on macOS).
+- While files are being moved, the table, the strip and the folder controls are disabled and the window cannot be closed, either with the window button or with Cmd+Q; both go through the same close check and are refused until the move finishes.
 
 ## How it works
 
@@ -118,7 +118,7 @@ Copy, write the tags on the copy, verify (tags read back, duration unchanged, no
 ```
 
 - `tests/fixtures/golden.csv` holds cases with invented names (`filename,tag_artist,tag_title,expected_filename,expected_flagged`). It is the feedback channel: add a row for each badly handled case.
-- Real data lives only locally, in `tests/fixtures/local/` and `tests/fixtures/audio/` (both in `.gitignore`). Test audio is generated with `tools/make_audio_fixtures.sh <folder>`; tests that need it are skipped when it is absent.
+- Real data lives only locally, in `tests/fixtures/local/` and `tests/fixtures/audio/` (both in `.gitignore`). Test audio is generated with `tools/make_audio_fixtures.sh <folder>`; when it is absent, tests generate a synthetic mp3 instead.
 - No test touches real folders: they work in `tmp_path` or on copies.
 
 Tools:

@@ -276,8 +276,9 @@ def test_apply_unknown_tag_key(tmp_path):
     assert sha(item.src) == before and not list(dest.iterdir())
 
 
-@pytest.mark.parametrize("bad", ["../x.mp3", "/tmp/abs-x.mp3", "a/b.mp3", "..", ".", "a\0b.mp3"])
+@pytest.mark.parametrize("bad", ["../x.mp3", "ABS", "a/b.mp3", "..", ".", "a\0b.mp3"])
 def test_apply_rejects_unsafe_filename(tmp_path, bad):
+    bad = str(tmp_path / "abs-x.mp3") if bad == "ABS" else bad
     item, dest = setup(tmp_path)
     before = sha(item.src)
     assert apply_item(item, dest, filename=bad) == "invalid file name"

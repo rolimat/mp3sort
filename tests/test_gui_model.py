@@ -32,14 +32,8 @@ def test_settings(tmp_path):
     assert load_settings(q) == (None, None)
 
 
-def test_can_scan_and_scan_error(tmp_path):
-    m = Model()
-    assert not m.can_scan()
-    m.source, m.dest = tmp_path / "gone", tmp_path
-    assert m.can_scan()
-    m.busy = True
-    assert not m.can_scan()
-    m.busy = False
+def test_scan_error(tmp_path):
+    m = Model(tmp_path / "gone", tmp_path)
     assert m.scan().startswith("Error: the source folder does not exist")
 
 
@@ -262,3 +256,28 @@ def test_move_same_final_name_second_refused(tmp_path):
     assert res[0][1] is None and res[1][1] == "already exists in destination, not overwritten"
     assert (s / "b.mp3").exists() and not (s / "a.mp3").exists()
     assert [p.name for p in d.iterdir()] == ["A - B.mp3"]
+
+
+def test_after_move_keeps_unmoved_rows_and_edits(tmp_path, monkeypatch):
+    s, d = tmp_path / "s", tmp_path / "d"
+    s.mkdir(); d.mkdir()
+    m = Model(s, d)
+    its = [Item(tmp_path / f"{n}.mp3", Proposal("A", n.upper(), []), sel) for n, sel in
+           (("a", True), ("b", True), ("c", False), ("d", True))]
+    rows(m, *its)
+    m.edit(2, "title", "Edited")  # unselected, edited
+    m.edit(1, "album", "Kept")    # will fail
+    def fake(it, dest, tags=None, filename=None):
+        if it.src.name == "b.mp3":
+            return "boom"
+        (dest / filename).write_bytes(b"")
+        return COPIED_NOT_DELETED + ": x" if it.src.name == "d.mp3" else None
+
+    monkeypatch.setattr(gm, "apply_item", fake)
+    res = m.move()
+    m.after_move(res)
+    assert [r.item.src.name for r in m.rows] == ["b.mp3", "c.mp3"]
+    assert m.rows[0].values["album"] == "Kept" and m.rows[1].values["title"] == "Edited"
+    assert m.edited_count() == 2 and not m.rows[1].selected
+    m.edit(1, "title", "A")  # "A - A.mp3" was just moved
+    assert "already exists in destination" in m.flags(1)

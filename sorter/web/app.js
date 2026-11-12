@@ -298,8 +298,8 @@ async function commit(dir) {
   const next = dir ? nextCell(e.i, e.field, dir) : null;
   if (e.input.value === e.orig) { closeUnchanged(); if (next) openCell(...next); return; }
   e.pending = true;
-  const r = await A.edit(e.i, e.field, e.input.value);
-  e.pending = false;
+  let r;
+  try { r = await A.edit(e.i, e.field, e.input.value); } finally { e.pending = false; }
   if (ed !== e) return;
   if (r.ok) {
     apply(r);
