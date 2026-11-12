@@ -53,3 +53,20 @@ def test_license_regex_rejects_binaries_and_keeps_nested_paths():
     assert LICENSE_RE.search("PyObjCTest/copying.cpython-314-darwin.so") is None
     assert LICENSE_RE.search("x.dist-info/licenses/vendor/LICENSE.txt")
     assert LICENSE_RE.search("x.dist-info/COPYING")
+
+
+def test_version_from_tag():
+    import subprocess
+    import pytest
+    from tools.release_version import version_from_tag
+
+    assert version_from_tag("v1.0.0") == "1.0.0"
+    assert version_from_tag("v12.3.45") == "12.3.45"
+    for bad in ("v1.0", "1.0.0", "v1.0.0-rc1", ""):
+        with pytest.raises(ValueError):
+            version_from_tag(bad)
+    script = Path(__file__).resolve().parent.parent / "tools" / "release_version.py"
+    r = subprocess.run([sys.executable, str(script), "v1.0"], capture_output=True, text=True)
+    assert r.returncode == 2 and "invalid tag: v1.0" in r.stderr
+    r = subprocess.run([sys.executable, str(script), "v1.2.3"], capture_output=True, text=True)
+    assert r.stdout.strip() == "1.2.3"

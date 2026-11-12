@@ -6,3 +6,5 @@ __pycache__/
 tests/fixtures/audio/
 docs/
 tests/fixtures/local/
+build/
+dist/
