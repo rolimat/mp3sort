@@ -72,7 +72,7 @@ The page is local only: it is loaded from files inside the package, makes no net
 ### What gets written
 
 - **Year is written as `YYYY`:** a file whose year is a full date (for example `2025-03-28`) gets `2025` even if you did not touch the cell (it does not count as an edit); a `YYYY-MM` or `YYYY-MM-DD` you type is written as typed.
-- **Untouched fields behave as before:** artist and title are written clean, album, genre and comment are removed, and year, key, BPM and label are left as they are in the file.
+- **Untouched fields behave as before:** artist and title are written clean, album, genre and comment are removed, and year, key, BPM and label are left as they are in the file (except that a year given as a date, `YYYY-MM`, `YYYY-MM-DD` or a timestamp, is shortened to `YYYY`).
 - **Edited fields are written exactly as typed** (only trimmed); no cleaning is applied to your text. A field edited to empty has its frame removed.
 - The file name is `Artist - Title.mp3` built from the current values, updated as you edit.
 - Everything else in the engine is unchanged (see Tags and Safe moves below); the written tags are verified by reading them back.

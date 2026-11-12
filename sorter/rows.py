@@ -74,7 +74,7 @@ def row_from_item(item: Item) -> Row:
     s = dict.fromkeys(FIELDS, "")
     s.update(_file_tags(item))
     forced = frozenset()
-    if (m := re.match(r"\d{4}", s["year"], re.ASCII)) and s["year"] != m.group():
+    if "; " not in s["year"] and (m := re.match(r"\d{4}", s["year"], re.ASCII)) and s["year"] != m.group():
         s["year"], forced = m.group(), frozenset({"year"})
     s["artist"], s["title"] = item.proposal.artist, item.proposal.title
     return Row(item, s, dict(s), item.selected, item.bitrate, item.vbr, forced)
