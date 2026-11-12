@@ -91,3 +91,12 @@ def test_edit_refuses_non_ascii_digits(tmp_path, audio, field, v):
 def test_multi_value_frame_shown_joined(tmp_path, audio):
     r = mk(tmp_path, audio, tags=[TPUB(encoding=3, text=["One", "Two"])])
     assert r.suggested["label"] == "One; Two"
+
+
+def test_year_suggested_shortened(tmp_path, audio):
+    r = mk(tmp_path, audio, tags=[TDRC(encoding=3, text="2025-03-28")])
+    assert r.suggested["year"] == "2025" and not r.edited()
+    assert r.forced == {"year"}
+    r.edit("year", "2025-03")  # a typed full date is still accepted and counts as edited
+    assert r.edited() and r.values["year"] == "2025-03"
+    assert mk(tmp_path, audio, tags=[TDRC(encoding=3, text="2025")]).forced == set()

@@ -103,7 +103,7 @@ def test_move_writes_only_edited_tags(tmp_path):
     res = m.move()
     assert res[0][1] is None and not f.exists()
     out = ID3(d / "Lumen - Prisma.mp3")
-    assert str(out["TDRC"].text[0]) == "2019-05-06 10:00:00" and str(out["TKEY"]) == "Am"
+    assert str(out["TDRC"].text[0]) == "2019" and str(out["TKEY"]) == "Am"
     assert str(out["TBPM"]) == "128.5" and "TALB" not in out
 
 
@@ -281,3 +281,55 @@ def test_after_move_keeps_unmoved_rows_and_edits(tmp_path, monkeypatch):
     assert m.edited_count() == 2 and not m.rows[1].selected
     m.edit(1, "title", "A")  # "A - A.mp3" was just moved
     assert "already exists in destination" in m.flags(1)
+
+
+def _year_file(tmp_path, name, year):
+    f = tmp_path / "s" / name
+    f.parent.mkdir(exist_ok=True)
+    shutil.copy(audio_path(), f)
+    t = ID3(f)
+    t.add(TDRC(encoding=3, text=year))
+    t.save(f)
+    return f
+
+
+def test_move_writes_shortened_year_without_marking_edited(tmp_path):
+    d = tmp_path / "d"
+    d.mkdir()
+    f = _year_file(tmp_path, "a.mp3", "2025-03-28")
+    m = Model(tmp_path / "s", d)
+    rows(m, Item(f, Proposal("Lumen", "Prisma", []), True))
+    assert m.edited_count() == 0
+    assert m.move()[0][1] is None
+    assert str(ID3(d / "Lumen - Prisma.mp3")["TDRC"].text[0]) == "2025"
+
+
+def test_move_year_typed_full_date_and_plain_year(tmp_path):
+    d = tmp_path / "d"
+    d.mkdir()
+    a = _year_file(tmp_path, "a.mp3", "2025-03-28")
+    b = _year_file(tmp_path, "b.mp3", "2024")
+    m = Model(tmp_path / "s", d)
+    rows(m, Item(a, Proposal("Lumen", "Prisma", []), True), Item(b, Proposal("Lumen", "Aura", []), True))
+    m.edit(0, "year", "2025-03-28")
+    assert m.move()[0][1] is None
+    assert str(ID3(d / "Lumen - Prisma.mp3")["TDRC"].text[0]) == "2025-03-28"
+    assert str(ID3(d / "Lumen - Aura.mp3")["TDRC"].text[0]) == "2024"
+
+
+def test_after_move_survives_unreadable_destination(tmp_path, monkeypatch):
+    s, d = tmp_path / "s", tmp_path / "d"
+    s.mkdir(); d.mkdir()
+    m = Model(s, d)
+    rows(m, Item(tmp_path / "a.mp3", Proposal("A", "B", []), True))
+    m._g, m._existing = {"x": [1]}, {"old"}
+    real = Path.iterdir
+
+    def boom(self):
+        if self == d:
+            raise OSError("denied")
+        return real(self)
+
+    monkeypatch.setattr(Path, "iterdir", boom)
+    err = m.after_move([(m.rows[0], None)])
+    assert "denied" in err and m._existing == {"old"} and m._g is None and m.rows == []

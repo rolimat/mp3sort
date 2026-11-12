@@ -64,12 +64,16 @@ class Model:
             self._scanned = (self.source, self.dest)
         return err
 
-    def after_move(self, results) -> None:
-        """Drop rows that left the source, keep the rest (with their edits) and refresh the destination listing."""
+    def after_move(self, results) -> str | None:
+        """Drop rows that left the source, keep the rest (with their edits) and refresh the destination listing.
+        Returns an error text when the destination cannot be listed (the old listing is kept)."""
         gone = {id(r) for r, e in results if e is None or e.startswith(COPIED_NOT_DELETED)}
         self.rows = [r for r in self.rows if id(r) not in gone]
-        self._existing = {name_key(p.name) for p in self.dest.iterdir()}
         self._g = None
+        try:
+            self._existing = {name_key(p.name) for p in self.dest.iterdir()}
+        except OSError as e:
+            return f"could not refresh destination listing: {e}"
 
     def edit(self, i: int, field: str, value: str) -> str | None:
         if self.busy:
@@ -152,7 +156,7 @@ class Model:
         if self._scanned != (self.source, self.dest):
             return "folders changed since scan, scan again"
         # true snapshot: later edits cannot change what is written
-        sel = [(r, r.filename(), {f: v for f, v in r.values.items() if v != r.suggested[f]})
+        sel = [(r, r.filename(), {f: v for f, v in r.values.items() if v != r.suggested[f] or f in r.forced})
                for r in self.rows if r.selected]
         out = []
         self.busy = True

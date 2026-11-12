@@ -211,7 +211,9 @@ function renderFoot() {
   if (results) {
     const b = h("button", "p", "Scan again");
     b.addEventListener("click", scan);
-    return f.replaceChildren(txt(results.error ? "r" : "g", [results.summary, results.error].filter(Boolean).join(" · ")), b);
+    const back = h("button", "", "Back to tracks");
+    back.addEventListener("click", () => { results = null; cur = -1; render(); });
+    return f.replaceChildren(txt(results.error ? "r" : "g", [results.summary, results.error].filter(Boolean).join(" · ")), back, b);
   }
   const c = S.counts;
   const info = `${c.tracks} tracks · ${c.ok} ok · ${c.warn} ⚠ · ${c.edited} edited · ${c.selected} selected`;

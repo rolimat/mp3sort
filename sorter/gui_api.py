@@ -146,7 +146,7 @@ class ApiImpl:
             else:
                 data["results"] = [{"filename": r.filename(), "error": e} for r, e in out]
                 data["summary"] = self.model.summary(out)
-                self.model.after_move(out)  # keeps unmoved rows with their edits
+                data["error"] = self.model.after_move(out)  # keeps unmoved rows with their edits
         except Exception as e:
             data["error"] = str(e) or type(e).__name__
         finally:
