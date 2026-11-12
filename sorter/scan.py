@@ -12,7 +12,7 @@ from sorter.clean import Proposal, propose
 class Item:
     src: Path
     proposal: Proposal
-    selected: bool  # por defecto: not proposal.flags
+    selected: bool  # default: not proposal.flags
     bitrate: int | None = None  # kbps
     vbr: bool = False
 

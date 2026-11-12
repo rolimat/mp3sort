@@ -13,15 +13,15 @@ def run(root, *args):
 def test_copies_folders_and_leaves_originals(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
-    a = tmp_path / "Carpeta Uno"
-    b = tmp_path / "otra carpeta"
+    a = tmp_path / "Folder One"
+    b = tmp_path / "other folder"
     for d, name in ((a, "x.mp3"), (b, "y.mp3")):
         d.mkdir()
         (d / name).write_bytes(b"data")
     r = run(root, str(a), str(b))
     assert r.returncode == 0, r.stderr
-    assert (root / "sandbox/complete/Carpeta Uno/x.mp3").read_bytes() == b"data"
-    assert (root / "sandbox/complete/otra carpeta/y.mp3").exists()
+    assert (root / "sandbox/complete/Folder One/x.mp3").read_bytes() == b"data"
+    assert (root / "sandbox/complete/other folder/y.mp3").exists()
     assert (root / "sandbox/dest").is_dir()
     assert (a / "x.mp3").exists() and (b / "y.mp3").exists()
     assert "mp3sort.py --source sandbox/complete sandbox/dest" in r.stdout

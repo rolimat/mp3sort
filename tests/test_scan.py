@@ -4,19 +4,18 @@ from pathlib import Path
 
 import mutagen
 import pytest
+from conftest import audio_path
 from mutagen.easyid3 import EasyID3
 
 from sorter.scan import name_key, scan
 
-AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
-needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing tests/fixtures/audio/a1.mp3")
 
 
 def put(path: Path, name: str, artist=None, title=None) -> Path:
-    """Copia la fixture a path/name y escribe tags inventados en la copia."""
+    """Copy the fixture to path/name and write invented tags into the copy."""
     path.mkdir(parents=True, exist_ok=True)
     dst = path / name
-    shutil.copy(AUDIO, dst)
+    shutil.copy(audio_path(), dst)
     if artist:
         f = mutagen.File(dst, easy=True)
         if f.tags is None:
@@ -32,7 +31,6 @@ def fake(path: Path, name: str, data=b"garbage") -> Path:
     return path / name
 
 
-@needs_audio
 def test_scan_finds_mp3_recursively(tmp_path):
     src = tmp_path / "src"
     put(src, "Lumen - Prisma - www.example.com.mp3", "Lumen", "Prisma")
@@ -47,7 +45,6 @@ def test_scan_finds_mp3_recursively(tmp_path):
     assert [i.src for i in items] == sorted(i.src for i in items)
 
 
-@needs_audio
 def test_ok_items_selected(tmp_path):
     src = tmp_path / "src"
     put(src, "Lumen - Prisma - www.example.com.mp3", "Lumen", "Prisma")
@@ -72,7 +69,6 @@ def test_scan_corrupt_mp3(tmp_path):
     assert item.proposal.flags and item.selected is False
 
 
-@needs_audio
 def test_duplicates_flagged(tmp_path):
     src = tmp_path / "src"
     put(src / "x", "Lumen - Prisma.mp3", "Lumen", "Prisma")
@@ -94,7 +90,6 @@ def test_duplicate_unicode_case(tmp_path):
     assert name_key("SÖLÄR") == name_key(unicodedata.normalize("NFD", "sölär"))
 
 
-@needs_audio
 def test_conflict_with_dest(tmp_path):
     src, dest = tmp_path / "src", tmp_path / "dest"
     put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
@@ -105,7 +100,6 @@ def test_conflict_with_dest(tmp_path):
     assert item.selected is False
 
 
-@needs_audio
 def test_scan_bitrate(tmp_path):
     src = tmp_path / "src"
     put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")

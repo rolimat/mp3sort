@@ -92,7 +92,10 @@ class Model:
                 ("Quality", f"{rate} · {dur}"),
                 ("Warning", "⚠ " + "; ".join(p.flags) if p.flags else "—")]
 
-    def move(self, progress=lambda i, n: None) -> list[tuple[Item, str | None]]:
+    def move(self, progress=lambda i, n: None) -> list[tuple[Item, str | None]] | str:
+        err = check_folders(self.source, self.dest)  # folders may have changed since the scan
+        if err:
+            return err
         sel = [it for it in self.items if it.selected]
         out = []
         self.busy = True

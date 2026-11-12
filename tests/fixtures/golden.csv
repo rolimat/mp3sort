@@ -1,7 +1,7 @@
 filename,tag_artist,tag_title,expected_filename,expected_flagged
 Lumen - Prisma - www.example.com.mp3,Lumen,Prisma,Lumen - Prisma.mp3,0
 Nova Delta - Open Sky 122.mp3,Nova Delta,Open Sky 122,Nova Delta - Open Sky.mp3,0
-Orion Vale - Cascade (Original Mix) [Nordlicht (Se)].mp3,Orion Vale,Cascade (Original Mix),Orion Vale - Cascade (Original Mix).mp3,0
+Orion Vale - Cascade (Original Mix) [Zephyra (Se)].mp3,Orion Vale,Cascade (Original Mix),Orion Vale - Cascade (Original Mix).mp3,0
 17-42 - Neon Echoes (Original Mix).mp3,17:42,Neon Echoes (Original Mix),17-42 - Neon Echoes (Original Mix).mp3,0
  Aurora - Nebula (Kiro Vane Remix).mp3, Aurora,Nebula (Kiro Vane Remix),Aurora - Nebula (Kiro Vane Remix).mp3,0
 Pixel Moth & Kalm - 640 (Extended) (Extended).mp3,Pixel Moth & Kal/m,640 (Extended) (Extended),Pixel Moth & Kal-m - 640 (Extended).mp3,0

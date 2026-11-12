@@ -2,6 +2,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from conftest import audio_path
 from mutagen.easyid3 import EasyID3
 
 from sorter.apply import COPIED_NOT_DELETED
@@ -9,13 +10,11 @@ from sorter.cli import main, parse_selection, render
 from sorter.clean import Proposal
 from sorter.scan import Item
 
-AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
-needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing tests/fixtures/audio/a1.mp3")
 
 
 def put(src: Path, name: str, artist: str, title: str) -> Path:
     f = src / name
-    shutil.copy(AUDIO, f)
+    shutil.copy(audio_path(), f)
     t = EasyID3(f)
     t["artist"], t["title"] = artist, title
     t.save()
@@ -68,7 +67,6 @@ def test_main_default_source_blocked(tmp_path):
     assert main([str(tmp_path)], input_fn=feed()) == 2
 
 
-@needs_audio
 def test_main_quit_and_eof(tmp_path):
     src, dest = folders(tmp_path)
     f = put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
@@ -81,7 +79,6 @@ def test_main_quit_and_eof(tmp_path):
     assert f.exists() and not list(dest.iterdir())
 
 
-@needs_audio
 def test_main_toggle_and_apply(tmp_path, capsys):
     src, dest = folders(tmp_path)
     one = put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
@@ -92,7 +89,6 @@ def test_main_toggle_and_apply(tmp_path, capsys):
     assert "Moved: 1 · Left in source: 1" in capsys.readouterr().out
 
 
-@needs_audio
 def test_main_bad_input_reprompts(tmp_path, capsys):
     src, dest = folders(tmp_path)
     put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")
@@ -160,7 +156,6 @@ def test_render_bitrate_column():
     assert lines[0].index("[") == lines[1].index("[")  # reasons aligned
 
 
-@needs_audio
 def test_main_prompt_on_own_line(tmp_path, capsys):
     src, dest = folders(tmp_path)
     put(src, "Lumen - Prisma.mp3", "Lumen", "Prisma")

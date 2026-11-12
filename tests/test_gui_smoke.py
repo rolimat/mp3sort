@@ -3,15 +3,16 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import audio_path
 
 tk = pytest.importorskip("tkinter")  # absent on minimal CI images
 
 import sorter.gui_model as gm  # noqa: E402
 from sorter.gui import App, trunc  # noqa: E402
+from sorter.clean import Proposal  # noqa: E402
 from sorter.gui_model import Model  # noqa: E402
+from sorter.scan import Item  # noqa: E402
 
-AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
-needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing a1.mp3")
 
 
 @pytest.fixture(autouse=True)
@@ -75,11 +76,10 @@ def test_scan_error_shown_without_dialog(root, tmp_path):
     assert errs and "does not exist" in errs[0] and not app.tree.get_children()
 
 
-@needs_audio
 def test_scan_select_move(root, tmp_path):
     s, d = folders(tmp_path)
-    shutil.copy(AUDIO, s / "Lumen - Prisma - www.example.com.mp3")
-    shutil.copy(AUDIO, s / "junk.mp3")
+    shutil.copy(audio_path(), s / "Lumen - Prisma - www.example.com.mp3")
+    shutil.copy(audio_path(), s / "junk.mp3")
     answers = [False, True]
     errs = []
     app = App(root, Model(s, d), ask_directory=None, confirm=lambda *a, **k: answers.pop(0), show_error=errs.append)
@@ -152,3 +152,26 @@ def test_close_and_quit(root, tmp_path):
     app.on_close()
     del root.destroy  # restore the class method for the fixture teardown
     assert called
+
+
+def test_choose_after_scan_clears_table(root, tmp_path):
+    s, d = folders(tmp_path)
+    m = Model(s, d)
+    m.items = [Item(s / "a.mp3", Proposal("A", "B", []), True)]
+    app = App(root, m, ask_directory=lambda **k: str(s), confirm=None)
+    app.refresh_table()
+    assert app.tree.get_children() and str(app.move_btn["state"]) == "normal"
+    app.choose_dest()
+    assert not m.items and not app.tree.get_children() and str(app.move_btn["state"]) == "disabled"
+
+
+def test_choose_survives_save_failure(root, tmp_path, monkeypatch):
+    s, d = folders(tmp_path)
+    errs = []
+
+    def boom(*a):
+        raise OSError("read-only")
+    monkeypatch.setattr("sorter.gui.save_settings", boom)
+    app = App(root, Model(), ask_directory=lambda **k: str(s), confirm=None, show_error=errs.append)
+    app.choose_source()
+    assert app.model.source == s and errs and "read-only" in errs[0]

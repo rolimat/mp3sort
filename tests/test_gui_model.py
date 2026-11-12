@@ -2,6 +2,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from conftest import audio_path
 from mutagen.apev2 import APEv2
 from mutagen.id3 import COMM, ID3, TALB
 
@@ -11,8 +12,6 @@ from sorter.clean import Proposal
 from sorter.gui_model import Model, load_settings, save_settings
 from sorter.scan import Item
 
-AUDIO = Path(__file__).parent / "fixtures" / "audio" / "a1.mp3"
-needs_audio = pytest.mark.skipif(not AUDIO.exists(), reason="missing a1.mp3")
 
 
 def item(tmp_path, name="a.mp3", flags=(), fn="A - B.mp3", sel=True):
@@ -53,12 +52,11 @@ def test_toggle_footer(tmp_path):
     assert m.toggle(0) is None and not m.items[0].selected
 
 
-@needs_audio
 def test_detail(tmp_path):
     f = tmp_path / "Lumen - Prisma.mp3"
-    shutil.copy(AUDIO, f)
+    shutil.copy(audio_path(), f)
     t = ID3(f)
-    t.add(TALB(encoding=3, text="Disco"))
+    t.add(TALB(encoding=3, text="Record"))
     t.add(COMM(encoding=3, lang="eng", desc="", text="promo text"))
     t.save(f)
     a = APEv2()
@@ -70,7 +68,7 @@ def test_detail(tmp_path):
     d = dict(m.detail(0))
     assert list(d) == ["Original file", "Folder", "Artist", "Title", "Album", "Genre",
                        "Comment", "APE tag", "Quality", "Warning"]
-    assert d["Album"] == "Disco → (empty)" and d["Comment"] == "promo text → (empty)"
+    assert d["Album"] == "Record → (empty)" and d["Comment"] == "promo text → (empty)"
     assert d["Genre"] == "(empty)" and d["APE tag"] == "present → removed"
     assert d["Quality"].startswith("320 kbps VBR · ") and d["Warning"] == "⚠ w"
     assert f.read_bytes() == before
@@ -86,7 +84,9 @@ def test_detail_unreadable(tmp_path):
 
 
 def test_move_and_summary(tmp_path, monkeypatch):
-    m = Model(tmp_path, tmp_path)
+    s, d = tmp_path / "s", tmp_path / "d"
+    s.mkdir(); d.mkdir()
+    m = Model(s, d)
     its = [item(tmp_path, n + ".mp3") for n in "abc"] + [item(tmp_path, "d", sel=False)]
     m.items = its
 
@@ -118,3 +118,17 @@ def test_scan_error_clears_items(tmp_path):
     m = Model(tmp_path / "gone", tmp_path)
     m.items = [item(tmp_path)]
     assert m.scan() is not None and m.items == []
+
+
+@pytest.mark.parametrize("sub", [False, True])
+def test_move_rechecks_folders(tmp_path, sub):
+    s, d = tmp_path / "src", tmp_path / "dst"
+    s.mkdir(); d.mkdir()
+    f = s / "a.mp3"
+    f.write_bytes(b"x")
+    m = Model(s, d)
+    m.items = [Item(f, Proposal("A", "B", []), True)]
+    m.dest = s / "inner" if sub else s
+    m.dest.mkdir(exist_ok=True)
+    assert m.move() == "Error: the destination cannot be inside the source (or vice versa)"
+    assert f.read_bytes() == b"x" and not list((s / "inner").glob("*") if sub else [])

@@ -12,7 +12,7 @@ COPIED_NOT_DELETED = "copied and verified, but the original could not be deleted
 
 
 def apply_item(item: Item, dest: Path) -> str | None:
-    """Mueve item.src a dest con tags limpios. None si va bien, o mensaje de error."""
+    """Move item.src into dest with cleaned tags. Returns None on success, else an error message."""
     name = item.proposal.filename
     if name is None:
         return "no proposed name"
@@ -28,7 +28,7 @@ def apply_item(item: Item, dest: Path) -> str | None:
                 shutil.copyfileobj(r, w)
             except BaseException:
                 w.close()
-                target.unlink(missing_ok=True)  # solo si open "xb" tuvo éxito: es nuestra
+                target.unlink(missing_ok=True)  # only after open "xb" succeeded: the copy is ours
                 raise
     except FileExistsError:
         return "already exists in destination, not overwritten"
@@ -38,7 +38,7 @@ def apply_item(item: Item, dest: Path) -> str | None:
         shutil.copystat(item.src, target)
         try:
             tags = ID3(target)
-            v2 = tags.version[1] if tags.version[1] in (3, 4) else 4  # v2.2 no se puede escribir
+            v2 = tags.version[1] if tags.version[1] in (3, 4) else 4  # v2.2 cannot be written
         except ID3NoHeaderError:
             tags, v2 = ID3(), 4
         tags.setall("TPE1", [TPE1(encoding=3, text=item.proposal.artist)])
@@ -47,7 +47,7 @@ def apply_item(item: Item, dest: Path) -> str | None:
             tags.delall(k)
         tags.save(target, v1=1, v2_version=v2)
         size0 = target.stat().st_size
-        apev2.delete(target)  # APEv2 lleva basura (webs, comentarios); PRIV/Traktor (ID3) se conserva
+        apev2.delete(target)  # APEv2 carries junk (sites, comments); PRIV/Traktor (ID3) is kept
         chk = ID3(target)
         if chk["TPE1"].text != [item.proposal.artist] or chk["TIT2"].text != [item.proposal.title]:
             raise ValueError("written tags do not match")
@@ -57,14 +57,14 @@ def apply_item(item: Item, dest: Path) -> str | None:
         except apev2.APENoHeaderError:
             pass
         info = MP3(target).info
-        # sin cabecera Xing mutagen estima la duración con el tamaño total: el APE borrado la acorta
+        # without a Xing header mutagen estimates duration from total size: the removed APE shortens it
         extra = (size0 - target.stat().st_size) * 8 / info.bitrate if info.bitrate else 0
         if abs(info.length - MP3(item.src).info.length) > 0.1 + extra:
             raise ValueError("duration changed")
     except Exception as e:
         target.unlink(missing_ok=True)
         return f"error writing tags, original untouched: {e}"
-    except BaseException:  # Ctrl-C: no dejar una copia sin verificar
+    except BaseException:  # Ctrl-C: do not leave an unverified copy
         target.unlink(missing_ok=True)
         raise
     try:

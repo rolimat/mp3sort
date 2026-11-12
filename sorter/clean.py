@@ -13,7 +13,7 @@ def clean_text(s: str) -> str:
     s = _WEB.sub("", s)
     s = _EMPTY.sub("", s)
     prev = None
-    while prev != s:  # repetir quita corchetes anidados de dentro hacia fuera
+    while prev != s:  # repeat to strip nested brackets from the inside out
         prev, s = s, _BRACKETS.sub("", s)
     s = re.sub(r"\s+", " ", s).strip(" -")
     s = _DUP_PARENS.sub(r"\1", s)
@@ -59,9 +59,9 @@ def parse_filename(name: str) -> tuple[str, str] | None:
 
 @dataclass
 class Proposal:
-    artist: str  # valor para el tag (puede contener / o :)
+    artist: str  # value for the tag (may contain / or :)
     title: str
-    flags: list[str]  # motivos de aviso; vacío = OK
+    flags: list[str]  # warning reasons; empty = OK
 
     @property
     def filename(self) -> str | None:
@@ -85,7 +85,7 @@ def _norm(s: str) -> str:
 
 def _same(a: str, b: str) -> bool:
     na, nb = _norm(a), _norm(b)
-    if not na or not nb:  # sin alfanuméricos latinos: comparar el texto tal cual
+    if not na or not nb:  # no Latin alphanumerics: compare the text as is
         return a.casefold().strip() == b.casefold().strip()
     return na == nb
 
@@ -124,7 +124,7 @@ def _paren_mix(title: str, fp: tuple[str, str] | None, flags: list[str]) -> str:
     if title.endswith(")"):
         return title
     m = _TAIL_GROUP.search(fp[1]) if fp else None
-    if m:  # el nombre de fichero ya trae el paréntesis: reutilizarlo sobre las palabras del tag
+    if m:  # the file name already has the parenthesis: reuse it on the tag words
         words = title.split()
         for k in range(len(words) - 1, 0, -1):
             if _same(" ".join(words[k:]), m.group(1)[1:-1]) and _same(" ".join(words[:k]), fp[1][: m.start()]):

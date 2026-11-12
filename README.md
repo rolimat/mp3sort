@@ -28,7 +28,7 @@ brew install python-tk@3.14
 .venv/bin/pip install -r requirements.txt
 ```
 
-pyenv and python.org builds that ship without Tk fail with `No module named '_tkinter'`; recreate the venv from the Homebrew Python above.
+pyenv and Homebrew Python builds without `python-tk` (python.org macOS installers include Tk) fail with `No module named '_tkinter'`; recreate the venv from the Homebrew Python above.
 
 ## Terminal usage
 
@@ -77,7 +77,7 @@ While files are being moved the window cannot be closed, including with Cmd+Q; i
 
 ### Name (artist and title)
 
-- Artist and title start from the `artist`/`title` tags. If they are missing, or the title contains `Artist - `, they are taken from the file name (dropping the track number, `_` and `__`, and a trailing release group such as `-abc`).
+- Artist and title start from the `artist`/`title` tags. If they are missing, or the title contains `Artist - `, they are taken from the file name (dropping the track number and a trailing release group such as `-abc`).
 - Cleaning removes web addresses (`www...`, `http...`, `something.com/.net/.org/.ru/.info/.io`), empty `()`, `[brackets]`, duplicated parentheses and a trailing BPM (2-3 digits between 70 and 180, e.g. `Open Sky 122`).
 - When the name comes from the tags, capitalization, artist separators (`,` `&` `x`) and `feat.`/`ft` are kept as they are. When it comes from a scene-style file name (no spaces), each word is capitalized, `_` becomes a space and `__` becomes `, `.
 - In the file name, `/` and `:` become `-`; the tag keeps the original text.

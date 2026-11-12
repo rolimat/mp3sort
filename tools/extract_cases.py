@@ -24,7 +24,7 @@ def main(folders):
             cases.append({"dir": p.parent.name, "filename": p.name,
                           "artist": tag(f, "artist"), "title": tag(f, "title")})
     OUT.parent.mkdir(parents=True, exist_ok=True); OUT.write_text(json.dumps(cases, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    print(f"{len(cases)} casos -> {OUT}")
+    print(f"{len(cases)} cases -> {OUT}")
 
 
 if __name__ == "__main__":

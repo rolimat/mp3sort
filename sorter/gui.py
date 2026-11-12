@@ -100,8 +100,13 @@ class App:
         p = self.ask_directory(initialdir=str(cur) if cur else None, mustexist=True)
         if p:
             setattr(self.model, which, Path(p))
-            save_settings(self.model.source, self.model.dest)
-            self._sync()
+            self.model.items = []  # a new Scan is required for the new folders
+            self.refresh_table()
+            self._set_detail("")
+            try:
+                save_settings(self.model.source, self.model.dest)
+            except OSError as e:
+                self.show_error(f"Could not save settings: {e}")
 
     def choose_source(self):
         self._choose("source")
@@ -221,7 +226,7 @@ class App:
         def done(r):
             self.model.busy = False
             self.status_var.set("")
-            if isinstance(r, Exception):
+            if isinstance(r, (Exception, str)):
                 self.show_error(str(r))
                 return
             self.results.delete(*self.results.get_children())

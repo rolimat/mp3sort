@@ -1,4 +1,4 @@
-"""Genera report/report.md aplicando propose() a tests/fixtures/local/cases.json."""
+"""Build report/report.md by applying propose() to tests/fixtures/local/cases.json."""
 import json
 import sys
 from pathlib import Path
@@ -17,7 +17,7 @@ def build_report(cases: list[dict]) -> str:
     for c in cases:
         p = propose(c["filename"], c.get("artist"), c.get("title"))
         rows.append((bool(p.flags), c, p))
-    rows.sort(key=lambda r: not r[0])  # estable: ⚠ primero
+    rows.sort(key=lambda r: not r[0])  # stable: warnings first
     bad = sum(r[0] for r in rows)
     out = [f"{len(rows) - bad} ok · {bad} ⚠", "",
            "| # | original file | tag artist | tag title | proposed | ⚠ reason |",

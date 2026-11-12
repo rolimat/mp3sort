@@ -7,9 +7,9 @@ from sorter.clean import clean_text, parse_filename, safe_filename
     ("https://example.net", ""),
     ("Open Sky 122", "Open Sky"),
     ("Tension (Extended Mix) 126", "Tension (Extended Mix)"),
-    ("Glitch 909", "Glitch 909"),                      # Review Focus 1: fuera de 70-180
+    ("Glitch 909", "Glitch 909"),                      # outside the 70-180 BPM range
     ("640 (Extended) (Extended)", "640 (Extended)"),
-    ("Cascade (Original Mix) [Nordlicht (Se)]", "Cascade (Original Mix)"),
+    ("Cascade (Original Mix) [Zephyra (Se)]", "Cascade (Original Mix)"),
     ("Slow Ember (Original Mix) [BREAKS]", "Slow Ember (Original Mix)"),
     (" Aurora", "Aurora"),
     ("365  (NOVA Extended Remix)", "365 (NOVA Extended Remix)"),
@@ -39,8 +39,8 @@ def test_safe_filename():
     ("2041 - Rushline (Leo Marsh 90' Revision).mp3", ("2041", "Rushline (Leo Marsh 90' Revision)")),
     ("Pavel Orne-Gentle Rule (Extended).mp3", ("Pavel Orne", "Gentle Rule (Extended)")),
     ("01-tara_quill_and_nomi-dust_signal_(mira_dune_remix).mp3", ("Tara Quill And Nomi", "Dust Signal (Mira Dune Remix)")),
-    ("01_wolfram_-_ciao_(extended_mix)-idc.mp3", ("Wolfram", "Ciao (Extended Mix)")),
-    ("01-felix_arden--spiral-wus.mp3", ("Felix Arden", "Spiral")),
+    ("01_orla_finch_-_ember_(extended_mix)-qrs.mp3", ("Orla Finch", "Ember (Extended Mix)")),
+    ("01-felix_arden--spiral-xyz.mp3", ("Felix Arden", "Spiral")),
     ("02-q-ensemble-distant_coast_(extended_mix).mp3", ("Q-Ensemble", "Distant Coast (Extended Mix)")),
     ("01-brisa-lumora.mp3", ("Brisa", "Lumora")),
     ("Sample Track Name (Extended Mix).mp3", None),
